@@ -107,7 +107,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ├── lib/
 │   ├── cloudinary.ts       # Cloudinary upload/delete helpers
 │   ├── db.ts               # MongoDB connection
-│   └── encryption.ts       # AES encrypt/decrypt
+│   ├── encryption.ts       # AES encrypt/decrypt
+│   └── uploadthing.ts      # Uploadthing UTApi instance
 ├── models/
 │   └── Clip.ts             # Mongoose schema
 └── vercel.json             # Cron job config

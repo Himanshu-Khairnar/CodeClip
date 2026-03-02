@@ -276,7 +276,7 @@ export default function Home() {
               <Card className="border-border shadow-sm duration-300 animate-in fade-in slide-in-from-bottom-4 rounded-none sm:rounded-md">
                 <CardHeader>
                   <CardTitle>Create New Clipboard</CardTitle>
-                  <CardDescription>Upload text or files (up to 20MB total).</CardDescription>
+                  <CardDescription>Upload text or files (up to 4.5MB total).</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">

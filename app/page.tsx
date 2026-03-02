@@ -71,7 +71,7 @@ export default function Home() {
     const newTotalSize = newFiles.reduce((sum, f) => sum + f.size, 0);
 
     if (currentTotalSize + newTotalSize > 20 * 1024 * 1024) {
-      toast.error("Total file size cannot exceed 20MB");
+      toast.error("Total file size cannot exceed 4.5MB");
       return;
     }
     setFiles((prev) => [...prev, ...newFiles]);

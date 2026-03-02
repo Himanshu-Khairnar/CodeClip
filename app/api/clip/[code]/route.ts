@@ -5,7 +5,7 @@ import { decryptText } from "@/lib/encryption";
 import fs from "fs/promises";
 import path from "path";
 
-export async function GET(req: Request, { params }: { params: { code: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
     await dbConnect();
     const { code } = await params;
@@ -64,7 +64,7 @@ export async function GET(req: Request, { params }: { params: { code: string } }
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: { code: string } }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
     await dbConnect();
     const { code } = await params;

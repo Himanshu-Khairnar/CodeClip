@@ -3,7 +3,7 @@ import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { decryptText } from "@/lib/encryption";
 
-export async function POST(req: Request, { params }: { params: { code: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
     await dbConnect();
     const { code } = await params;

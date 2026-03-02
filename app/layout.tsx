@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CodeClip - Secure Online Clipboard",
+  title: "CodeClip - Secure Online Clipboard" ,
   description: "Share text and files securely in seconds with auto-destruct timers and password protection.",
   keywords: ["clipboard", "online clipboard", "share text", "share files", "secure clipboard", "code clip"],
   authors: [{ name: "Himanshu" }],

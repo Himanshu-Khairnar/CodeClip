@@ -4,12 +4,12 @@ A fast, secure temporary clipboard for sharing text and files. Create a clip, sh
 
 ## Features
 
-- **Text & File Sharing** — paste text or upload files (up to 20MB total)
+- **Text & File Sharing** — paste text or upload any file type (up to 4.5MB total)
 - **Password Protection** — optionally lock a clip behind a password
 - **One-Time View** — clip auto-deletes after the first access
 - **QR Code** — scan to open the clip on any device
 - **AES Encryption** — text content is encrypted before being stored
-- **Auto Cleanup** — server-side cron runs every 5 hours to purge stale clips
+- **Auto Cleanup** — server-side cron runs daily to purge stale clips and their files from storage
 - **Dark / Light Theme** — system-aware with manual toggle
 
 ## Tech Stack
@@ -18,6 +18,7 @@ A fast, secure temporary clipboard for sharing text and files. Create a clip, sh
 |---|---|
 | Framework | Next.js 16 (App Router) |
 | Database | MongoDB Atlas (Mongoose) |
+| File Storage | Uploadthing (2GB free, all file types) |
 | Encryption | CryptoJS (AES) |
 | UI | shadcn/ui + Tailwind CSS 4 |
 | Scheduling | Vercel Cron Jobs |
@@ -46,6 +47,7 @@ Create a `.env` file in the root:
 ```env
 MONGODB_URI=your_mongodb_connection_string
 CRON_SECRET=your_random_secret_string
+UPLOADTHING_TOKEN=your_uploadthing_token
 ```
 
 ### 4. Run the development server
@@ -62,6 +64,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |---|---|
 | `MONGODB_URI` | MongoDB connection string (Atlas or local) |
 | `CRON_SECRET` | Secret token to authorize the `/api/cleanup` cron endpoint |
+| `UPLOADTHING_TOKEN` | Token from [uploadthing.com](https://uploadthing.com) dashboard for file storage |
 
 ## API Routes
 
@@ -80,7 +83,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 3. Add environment variables in **Project Settings → Environment Variables**:
    - `MONGODB_URI`
    - `CRON_SECRET`
-4. Deploy — Vercel will automatically run the cleanup cron every 5 hours via `vercel.json`
+   - `UPLOADTHING_TOKEN` — get this from [uploadthing.com](https://uploadthing.com) → create app → copy token
+4. Deploy — Vercel will automatically run the cleanup cron once daily via `vercel.json`
 
 ## Project Structure
 
@@ -96,7 +100,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 │   └── ui/                 # shadcn components
 ├── lib/
 │   ├── db.ts               # MongoDB connection
-│   └── encryption.ts       # AES encrypt/decrypt
+│   ├── encryption.ts       # AES encrypt/decrypt
+│   └── uploadthing.ts      # Uploadthing UTApi instance
 ├── models/
 │   └── Clip.ts             # Mongoose schema
 └── vercel.json             # Cron job config

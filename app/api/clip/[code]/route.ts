@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { decryptText } from "@/lib/encryption";
-import fs from "fs/promises";
-import path from "path";
+import { utapi } from "@/lib/uploadthing";
 
 export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
@@ -43,17 +42,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
 
     // Auto delete if one time view
     if (clip.isOneTimeView) {
-      // Physical file deletion
-      if (clip.files && clip.files.length > 0) {
-        for (const file of clip.files) {
-          try {
-            const filepath = path.join(process.cwd(), "public", file.path);
-            await fs.unlink(filepath);
-          } catch (err) {
-            console.error(`Failed to delete file ${file.path}:`, err);
-          }
-        }
-      }
+      const keys = clip.files?.map((f: any) => f.key).filter(Boolean) ?? [];
+      if (keys.length > 0) await utapi.deleteFiles(keys);
       await Clip.deleteOne({ _id: clip._id });
     }
 
@@ -75,17 +65,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ code:
       return NextResponse.json({ message: "Clip not found" }, { status: 404 });
     }
 
-    // Physical file deletion
-    if (clip.files && clip.files.length > 0) {
-      for (const file of clip.files) {
-        try {
-          const filepath = path.join(process.cwd(), "public", file.path);
-          await fs.unlink(filepath);
-        } catch (err) {
-           console.error(`Failed to delete file ${file.path}:`, err);
-        }
-      }
-    }
+    const keys = clip.files?.map((f: any) => f.key).filter(Boolean) ?? [];
+    if (keys.length > 0) await utapi.deleteFiles(keys);
 
     return NextResponse.json({ message: "Clip deleted successfully" });
   } catch (error) {

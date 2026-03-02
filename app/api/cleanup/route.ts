@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs/promises";
-import path from "path";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
+import { utapi } from "@/lib/uploadthing";
 
 export async function GET(req: NextRequest) {
-  // Validate cron secret to prevent unauthorized calls
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
@@ -15,7 +13,6 @@ export async function GET(req: NextRequest) {
 
   await dbConnect();
 
-  // Find all documents created more than 2 minutes ago
   const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
 
   const expiredClips = await Clip.find({
@@ -23,10 +20,7 @@ export async function GET(req: NextRequest) {
   }).lean();
 
   if (expiredClips.length === 0) {
-    return NextResponse.json({
-      message: "No expired clips found",
-      deleted: 0,
-    });
+    return NextResponse.json({ message: "No expired clips found", deleted: 0 });
   }
 
   let deletedDocs = 0;
@@ -34,17 +28,14 @@ export async function GET(req: NextRequest) {
   const errors: string[] = [];
 
   for (const clip of expiredClips) {
-    // Delete each physical file associated with this clip
-    for (const file of clip.files ?? []) {
+    // Delete files from uploadthing
+    const keys = clip.files?.map((f: any) => f.key).filter(Boolean) ?? [];
+    if (keys.length > 0) {
       try {
-        const filePath = path.join(process.cwd(), "public", file.path);
-        await fs.unlink(filePath);
-        deletedFiles++;
+        await utapi.deleteFiles(keys);
+        deletedFiles += keys.length;
       } catch (err: any) {
-        // File may already be gone — log but don't abort
-        if (err.code !== "ENOENT") {
-          errors.push(`Failed to delete file ${file.path}: ${err.message}`);
-        }
+        errors.push(`Failed to delete files for clip ${clip.code}: ${err.message}`);
       }
     }
 

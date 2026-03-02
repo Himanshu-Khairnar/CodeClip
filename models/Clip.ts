@@ -4,6 +4,7 @@ export interface IFile {
   filename: string;
   path: string;
   size: number;
+  key?: string;
 }
 
 export interface IClip extends mongoose.Document {
@@ -21,6 +22,7 @@ const FileSchema = new mongoose.Schema({
   filename: { type: String, required: true },
   path: { type: String, required: true },
   size: { type: Number, required: true },
+  key: { type: String },
 });
 
 const ClipSchema = new mongoose.Schema({

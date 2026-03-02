@@ -112,11 +112,21 @@ export default function Home() {
       clearInterval(progressInterval);
       setProgress(100);
 
-      const data = await res.json();
-
       if (!res.ok) {
-        throw new Error(data.message || "Something went wrong during upload.");
+        const text = await res.text();
+        let message = "Something went wrong during upload.";
+        try {
+          const json = JSON.parse(text);
+          message = json.message || message;
+        } catch {
+          if (text.toLowerCase().includes("too large") || text.toLowerCase().includes("entity")) {
+            message = "File too large. Vercel limits uploads to 4.5MB on the free plan.";
+          }
+        }
+        throw new Error(message);
       }
+
+      const data = await res.json();
 
       const generatedCode = data.code;
       setCode(generatedCode);

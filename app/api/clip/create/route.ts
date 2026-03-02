@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { encryptText } from "@/lib/encryption";
-import { utapi } from "@/lib/uploadthing";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 
 export const maxDuration = 60;
 
@@ -19,27 +19,31 @@ export async function POST(req: Request) {
     const files: File[] = formData.getAll("files") as File[];
 
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-    if (totalSize > 20 * 1024 * 1024) {
-      return NextResponse.json({ message: "Limit exceeded (max 20MB)" }, { status: 400 });
+    if (totalSize > 30 * 1024 * 1024) {
+      return NextResponse.json({ message: "Limit exceeded (max 30MB)" }, { status: 400 });
     }
 
-    const savedFiles: { filename: string; path: string; size: number; key: string }[] = [];
+    const savedFiles: { filename: string; path: string; size: number; key: string; resourceType: string }[] = [];
 
     const filesToUpload = files.filter((f) => f.name && f.size > 0);
-    if (filesToUpload.length > 0) {
-      const uploadResults = await utapi.uploadFiles(filesToUpload);
+    for (const file of filesToUpload) {
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
 
-      for (let i = 0; i < filesToUpload.length; i++) {
-        const result = uploadResults[i];
-        if (result.data) {
-          savedFiles.push({
-            filename: filesToUpload[i].name,
-            path: result.data.ufsUrl,
-            size: filesToUpload[i].size,
-            key: result.data.key,
-          });
-        }
-      }
+      const result = await uploadToCloudinary(buffer, {
+        resource_type: "auto",
+        folder: "online-clipboard",
+        public_id: `${Date.now()}-${file.name.replace(/\.[^/.]+$/, "")}`,
+        use_filename: false,
+      });
+
+      savedFiles.push({
+        filename: file.name,
+        path: result.secure_url,
+        size: file.size,
+        key: result.public_id,
+        resourceType: result.resource_type,
+      });
     }
 
     const code = uuidv4().slice(0, 6).toUpperCase();

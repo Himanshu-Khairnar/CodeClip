@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { decryptText } from "@/lib/encryption";
-import { utapi } from "@/lib/uploadthing";
+import { deleteFromCloudinary } from "@/lib/cloudinary";
 
 export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
@@ -42,8 +42,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
 
     // Auto delete if one time view
     if (clip.isOneTimeView) {
-      const keys = clip.files?.map((f: any) => f.key).filter(Boolean) ?? [];
-      if (keys.length > 0) await utapi.deleteFiles(keys);
+      for (const f of clip.files) {
+        if (f.key) {
+          await deleteFromCloudinary(f.key, f.resourceType || "raw");
+        }
+      }
       await Clip.deleteOne({ _id: clip._id });
     }
 
@@ -65,8 +68,11 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ code:
       return NextResponse.json({ message: "Clip not found" }, { status: 404 });
     }
 
-    const keys = clip.files?.map((f: any) => f.key).filter(Boolean) ?? [];
-    if (keys.length > 0) await utapi.deleteFiles(keys);
+    for (const f of clip.files) {
+      if (f.key) {
+        await deleteFromCloudinary(f.key, f.resourceType || "raw");
+      }
+    }
 
     return NextResponse.json({ message: "Clip deleted successfully" });
   } catch (error) {

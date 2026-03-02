@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
-import { utapi } from "@/lib/uploadthing";
+import { deleteFromCloudinary } from "@/lib/cloudinary";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -28,14 +28,14 @@ export async function GET(req: NextRequest) {
   const errors: string[] = [];
 
   for (const clip of expiredClips) {
-    // Delete files from uploadthing
-    const keys = clip.files?.map((f: any) => f.key).filter(Boolean) ?? [];
-    if (keys.length > 0) {
+    // Delete files from Cloudinary
+    const filesToDelete = clip.files?.filter((f: any) => f.key) ?? [];
+    for (const f of filesToDelete) {
       try {
-        await utapi.deleteFiles(keys);
-        deletedFiles += keys.length;
+        await deleteFromCloudinary(f.key, f.resourceType || "raw");
+        deletedFiles++;
       } catch (err: any) {
-        errors.push(`Failed to delete files for clip ${clip.code}: ${err.message}`);
+        errors.push(`Failed to delete file ${f.key} for clip ${clip.code}: ${err.message}`);
       }
     }
 

@@ -70,8 +70,8 @@ export default function Home() {
     const currentTotalSize = files.reduce((sum, f) => sum + f.size, 0);
     const newTotalSize = newFiles.reduce((sum, f) => sum + f.size, 0);
 
-    if (currentTotalSize + newTotalSize > 20 * 1024 * 1024) {
-      toast.error("Total file size cannot exceed 4.5MB");
+    if (currentTotalSize + newTotalSize > 30 * 1024 * 1024) {
+      toast.error("Total file size cannot exceed 30MB");
       return;
     }
     setFiles((prev) => [...prev, ...newFiles]);
@@ -276,7 +276,7 @@ export default function Home() {
               <Card className="border-border shadow-sm duration-300 animate-in fade-in slide-in-from-bottom-4 rounded-none sm:rounded-md">
                 <CardHeader>
                   <CardTitle>Create New Clipboard</CardTitle>
-                  <CardDescription>Upload text or files (up to 4.5MB total).</CardDescription>
+                  <CardDescription>Upload text or files (up to 30MB total).</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
@@ -301,7 +301,7 @@ export default function Home() {
                     >
                       <UploadCloud className="w-10 h-10 text-muted-foreground" />
                       <p className="font-medium">Click or drag files here</p>
-                      <p className="text-sm text-muted-foreground">Any file type up to 20MB</p>
+                      <p className="text-sm text-muted-foreground">Any file type up to 30MB</p>
                       <input
                         type="file"
                         multiple

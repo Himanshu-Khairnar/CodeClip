@@ -29,13 +29,15 @@ export async function GET(req: NextRequest) {
 
   for (const clip of expiredClips) {
     // Delete files from Cloudinary
-    const filesToDelete = clip.files?.filter((f: any) => f.key) ?? [];
+    const filesToDelete = clip.files?.filter((f: { key?: string }) => f.key) ?? [];
     for (const f of filesToDelete) {
+      if (!f.key) continue;
       try {
         await deleteFromCloudinary(f.key, f.resourceType || "raw");
         deletedFiles++;
-      } catch (err: any) {
-        errors.push(`Failed to delete file ${f.key} for clip ${clip.code}: ${err.message}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        errors.push(`Failed to delete file ${f.key} for clip ${clip.code}: ${message}`);
       }
     }
 
@@ -43,8 +45,9 @@ export async function GET(req: NextRequest) {
     try {
       await Clip.deleteOne({ _id: clip._id });
       deletedDocs++;
-    } catch (err: any) {
-      errors.push(`Failed to delete clip ${clip.code}: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      errors.push(`Failed to delete clip ${clip.code}: ${message}`);
     }
   }
 

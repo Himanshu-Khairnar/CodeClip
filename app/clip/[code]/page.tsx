@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { 
   Download, Copy, Lock, ShieldCheck, AlertTriangle, ArrowLeft, Sun, Moon,
@@ -14,11 +13,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 
+interface ClipFile {
+    filename: string;
+    path: string;
+    size: number;
+    key?: string;
+    resourceType?: string;
+}
+
+interface ClipData {
+    code: string;
+    text?: string;
+    files: ClipFile[];
+    isOneTimeView?: boolean;
+    createdAt?: string;
+    isPasswordProtected?: boolean;
+}
+
 export default function ClipPage({ params }: { params: Promise<{ code: string }> }) {
     const unwrappedParams = use(params);
     const code = unwrappedParams.code;
 
-    const [data, setData] = useState<any>(null);
+    const [data, setData] = useState<ClipData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -26,17 +42,12 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [verifying, setVerifying] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(false);
     const [downloadingMap, setDownloadingMap] = useState<Record<string, boolean>>({});
+    const [downloadingAll, setDownloadingAll] = useState(false);
     const [previewFileIndex, setPreviewFileIndex] = useState<number | null>(null);
 
     const { theme, setTheme } = useTheme();
 
-    useEffect(() => {
-        if (code) {
-            fetchClip();
-        }
-    }, [code]);
-
-    const fetchClip = async () => {
+    const fetchClip = useCallback(async () => {
         try {
             setLoading(true);
             const res = await fetch(`/api/clip/${code}`);
@@ -51,13 +62,20 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
             } else {
                 setData(resData);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            setError(err.message || "Clip not found or expired.");
+            const message = err instanceof Error ? err.message : "Clip not found or expired.";
+            setError(message);
         } finally {
             setLoading(false);
         }
-    };
+    }, [code]);
+
+    useEffect(() => {
+        if (code) {
+            fetchClip();
+        }
+    }, [code, fetchClip]);
 
     const handleVerifyPassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -79,9 +97,10 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
             setData(resData);
             setNeedsPassword(false);
             toast.success("Access granted!");
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            toast.error(err.message || "Incorrect password");
+            const message = err instanceof Error ? err.message : "Incorrect password";
+            toast.error(message);
         } finally {
             setVerifying(false);
         }
@@ -96,9 +115,12 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
     const downloadSingleFile = async (url: string, filename: string) => {
         setDownloadingMap((prev) => ({ ...prev, [filename]: true }));
+        const downloadEndpoint = `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+
         try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("Network request failed");
+            const res = await fetch(downloadEndpoint);
+            if (!res.ok) throw new Error("Download request failed");
+
             const blob = await res.blob();
             const blobUrl = window.URL.createObjectURL(blob);
             const link = document.createElement("a");
@@ -107,53 +129,63 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            window.URL.revokeObjectURL(blobUrl);
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
             toast.success(`Downloaded ${filename}`);
         } catch (e) {
-            console.error("Blob download failed, opening direct link", e);
+            console.warn("Direct blob download failed, triggering fallback download:", e);
+            // Fallback: direct download navigation to the download proxy
             const link = document.createElement("a");
-            link.href = url;
+            link.href = downloadEndpoint;
             link.download = filename;
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            toast.info(`Opening ${filename}`);
+            toast.info(`Downloading ${filename}...`);
         } finally {
             setDownloadingMap((prev) => ({ ...prev, [filename]: false }));
         }
     };
 
     const handleDownloadAll = async () => {
-        if (!data?.files || data.files.length === 0) return;
-        toast.info(`Downloading all ${data.files.length} files...`);
-        for (const file of data.files) {
-            await downloadSingleFile(file.path, file.filename);
+        if (!data?.files || data.files.length === 0 || downloadingAll) return;
+        setDownloadingAll(true);
+        toast.info(`Downloading ${data.files.length} file(s)...`);
+
+        try {
+            for (let i = 0; i < data.files.length; i++) {
+                const file = data.files[i];
+                await downloadSingleFile(file.path, file.filename);
+                if (i < data.files.length - 1) {
+                    // Small delay to ensure desktop browsers process multiple downloads without interruption
+                    await new Promise((resolve) => setTimeout(resolve, 600));
+                }
+            }
+        } finally {
+            setDownloadingAll(false);
         }
     };
 
     const getFileIcon = (filename: string, resourceType?: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext) || resourceType === 'image') {
-            return <ImageIcon className="w-5 h-5 text-blue-500 shrink-0" />;
+            return <ImageIcon className="w-5 h-5 text-primary shrink-0" />;
         }
         if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext) || resourceType === 'video') {
-            return <Video className="w-5 h-5 text-purple-500 shrink-0" />;
+            return <Video className="w-5 h-5 text-primary shrink-0" />;
         }
         if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) {
-            return <Music className="w-5 h-5 text-pink-500 shrink-0" />;
+            return <Music className="w-5 h-5 text-primary shrink-0" />;
         }
         if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) {
-            return <FileArchive className="w-5 h-5 text-amber-500 shrink-0" />;
+            return <FileArchive className="w-5 h-5 text-primary shrink-0" />;
         }
         if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'xml', 'yaml', 'yml'].includes(ext)) {
-            return <FileCode className="w-5 h-5 text-emerald-500 shrink-0" />;
+            return <FileCode className="w-5 h-5 text-primary shrink-0" />;
         }
         if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
-            return <FileText className="w-5 h-5 text-indigo-500 shrink-0" />;
+            return <FileText className="w-5 h-5 text-primary shrink-0" />;
         }
-        return <File className="w-5 h-5 text-slate-500 shrink-0" />;
+        return <File className="w-5 h-5 text-muted-foreground shrink-0" />;
     };
 
     const formatSize = (bytes: number) => {
@@ -189,10 +221,10 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     if (error) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-4">
-                <Card className="w-full max-w-md border-red-500/50 shadow-lg shadow-red-500/10">
+                <Card className="w-full max-w-md border-destructive/50 shadow-lg shadow-destructive/10">
                     <CardHeader className="text-center">
-                        <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-2" />
-                        <CardTitle className="text-2xl text-red-500">Error</CardTitle>
+                        <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-2" />
+                        <CardTitle className="text-2xl text-destructive">Error</CardTitle>
                         <CardDescription>{error}</CardDescription>
                     </CardHeader>
                     <CardFooter className="flex justify-center">
@@ -269,7 +301,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                 ) : data ? (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {data.isOneTimeView && (
-                            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-600 p-4 rounded-md flex items-start gap-3 shadow-sm">
+                            <div className="bg-primary/10 border border-primary/20 text-primary p-4 rounded-md flex items-start gap-3 shadow-sm">
                                 <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                                 <div>
                                     <p className="font-medium">One-Time View Enabled</p>
@@ -304,15 +336,26 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                     <div className="flex flex-row items-center justify-between gap-4">
                                         <CardTitle className="text-lg">Attached Files ({data.files.length})</CardTitle>
                                         {data.files.length > 1 && (
-                                            <Button variant="outline" size="sm" onClick={handleDownloadAll} className="h-8 shrink-0">
-                                                <Download className="w-4 h-4 mr-2" /> Download All
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleDownloadAll}
+                                                disabled={downloadingAll}
+                                                className="h-8 shrink-0 text-xs"
+                                            >
+                                                {downloadingAll ? (
+                                                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                                ) : (
+                                                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                                                )}
+                                                {downloadingAll ? "Downloading All..." : "Download All"}
                                             </Button>
                                         )}
                                     </div>
                                 </CardHeader>
                                 <CardContent className="pt-4">
                                     <div className="space-y-3">
-                                        {data.files.map((file: any, index: number) => {
+                                        {data.files.map((file: ClipFile, index: number) => {
                                             const ext = file.filename.split('.').pop()?.toLowerCase() || '';
                                             const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || file.resourceType === 'image';
                                             const isVideo = ['mp4', 'webm', 'mov'].includes(ext) || file.resourceType === 'video';
@@ -367,6 +410,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                     {isPreviewing && (
                                                         <div className="border-t border-border bg-muted/20 p-4 flex justify-center items-center">
                                                             {isImage && (
+                                                                /* eslint-disable-next-line @next/next/no-img-element */
                                                                 <img
                                                                     src={file.path}
                                                                     alt={file.filename}

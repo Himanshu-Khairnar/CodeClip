@@ -8,11 +8,16 @@ if (!MONGODB_URI) {
   );
 }
 
-let cached = (global as any).mongoose;
-
-if (!cached) {
-  cached = (global as any).mongoose = { conn: null, promise: null };
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
 }
+
+declare global {
+  var mongooseCached: MongooseCache | undefined;
+}
+
+const cached: MongooseCache = global.mongooseCached ?? (global.mongooseCached = { conn: null, promise: null });
 
 async function dbConnect() {
   if (cached.conn) {

@@ -9,12 +9,11 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { 
-  UploadCloud, CheckCircle2, Copy, ExternalLink, Moon, Sun, Github, Clock, X,
+  UploadCloud, CheckCircle2, Copy, ExternalLink, Clock, X,
   FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
@@ -36,7 +35,6 @@ export default function Home() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
 
   const handleAccess = (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,9 +149,10 @@ export default function Home() {
       setQrCodeUrl(qrDataUrl);
 
       toast.success("Clipboard created successfully!");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error.message || "Something went wrong during upload.");
+      const message = error instanceof Error ? error.message : "Something went wrong during upload.";
+      toast.error(message);
     } finally {
       setUploading(false);
       setProgress(0);
@@ -208,8 +207,8 @@ export default function Home() {
 
                 {/* Success header */}
                 <div className="flex flex-col items-center gap-3  py-6 px-6 text-center border-b border-border bg-muted/20">
-                  <div className="w-14 h-14 bg-green-500/10 rounded-full flex items-center justify-center border border-green-500/20">
-                    <CheckCircle2 className="w-8 h-8 text-green-500" />
+                  <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
+                    <CheckCircle2 className="w-8 h-8 text-primary" />
                   </div>
                   <div>
                     <h2 className="text-xl font-bold tracking-tight">Clip Created!</h2>
@@ -246,6 +245,7 @@ export default function Home() {
                   <div className="flex gap-4 items-stretch pt-1">
                     {qrCodeUrl && (
                       <div className="p-3 bg-white rounded-lg border border-border shadow-sm shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={qrCodeUrl} alt="QR Code" className="w-32 h-32" />
                       </div>
                     )}
@@ -320,19 +320,19 @@ export default function Home() {
                         <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                           {files.map((file, i) => {
                             const ext = file.name.split('.').pop()?.toLowerCase() || '';
-                            let icon = <File className="w-4 h-4 text-slate-500 shrink-0" />;
+                            let icon = <File className="w-4 h-4 text-muted-foreground shrink-0" />;
                             if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
-                              icon = <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />;
+                              icon = <ImageIcon className="w-4 h-4 text-primary shrink-0" />;
                             } else if (['mp4', 'webm', 'mov', 'avi'].includes(ext)) {
-                              icon = <Video className="w-4 h-4 text-purple-500 shrink-0" />;
+                              icon = <Video className="w-4 h-4 text-primary shrink-0" />;
                             } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
-                              icon = <Music className="w-4 h-4 text-pink-500 shrink-0" />;
+                              icon = <Music className="w-4 h-4 text-primary shrink-0" />;
                             } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
-                              icon = <FileArchive className="w-4 h-4 text-amber-500 shrink-0" />;
+                              icon = <FileArchive className="w-4 h-4 text-primary shrink-0" />;
                             } else if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'yaml'].includes(ext)) {
-                              icon = <FileCode className="w-4 h-4 text-emerald-500 shrink-0" />;
+                              icon = <FileCode className="w-4 h-4 text-primary shrink-0" />;
                             } else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
-                              icon = <FileText className="w-4 h-4 text-indigo-500 shrink-0" />;
+                              icon = <FileText className="w-4 h-4 text-primary shrink-0" />;
                             }
 
                             const formattedSize = file.size > 1024 * 1024
@@ -379,7 +379,7 @@ export default function Home() {
                       <input
                         type="checkbox"
                         id="oneTime"
-                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        className="w-4 h-4 rounded border-input text-primary focus:ring-primary accent-primary"
                         checked={isOneTimeView}
                         onChange={(e) => setIsOneTimeView(e.target.checked)}
                       />

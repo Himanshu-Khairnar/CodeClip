@@ -25,32 +25,56 @@ export async function POST(req: Request) {
 
     const savedFiles: { filename: string; path: string; size: number; key: string; resourceType: string }[] = [];
 
+    const imageExtensions = new Set(["jpg", "jpeg", "png", "gif", "webp", "ico", "bmp"]);
+    const videoAudioExtensions = new Set(["mp4", "webm", "mov", "avi", "mkv", "mp3", "wav", "ogg", "m4a", "flac", "aac"]);
+
     const filesToUpload = files.filter((f) => f.name && f.size > 0);
     for (const file of filesToUpload) {
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      // Preserve file extension in public_id so Cloudinary handles raw/document/archive/binary files correctly
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      let resourceType: "image" | "video" | "raw" = "raw";
+      if (imageExtensions.has(ext)) {
+        resourceType = "image";
+      } else if (videoAudioExtensions.has(ext)) {
+        resourceType = "video";
+      } else {
+        resourceType = "raw";
+      }
+
       const lastDotIndex = file.name.lastIndexOf(".");
       const fileExt = lastDotIndex !== -1 ? file.name.substring(lastDotIndex) : "";
       const baseName = lastDotIndex !== -1 ? file.name.substring(0, lastDotIndex) : file.name;
       const sanitizedBase = baseName.replace(/[^a-zA-Z0-9_-]/g, "_");
       const publicId = `${Date.now()}-${sanitizedBase}${fileExt}`;
 
-      const result = await uploadToCloudinary(buffer, {
-        resource_type: "auto",
-        folder: "online-clipboard",
-        public_id: publicId,
-        use_filename: true,
-        unique_filename: false,
-      });
+      let result;
+      try {
+        result = await uploadToCloudinary(buffer, {
+          resource_type: resourceType,
+          folder: "online-clipboard",
+          public_id: publicId,
+          use_filename: true,
+          unique_filename: false,
+        });
+      } catch (uploadErr) {
+        console.warn(`Upload with resource_type ${resourceType} failed, trying raw fallback:`, uploadErr);
+        result = await uploadToCloudinary(buffer, {
+          resource_type: "raw",
+          folder: "online-clipboard",
+          public_id: publicId,
+          use_filename: true,
+          unique_filename: false,
+        });
+      }
 
       savedFiles.push({
         filename: file.name,
         path: result.secure_url,
         size: file.size,
         key: result.public_id,
-        resourceType: result.resource_type,
+        resourceType: result.resource_type || resourceType,
       });
     }
 

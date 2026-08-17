@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
-  UploadCloud, CheckCircle2, Copy, ExternalLink, Clock, X, Plus,
+  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info,
   FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -28,9 +28,6 @@ export default function Home() {
   const [code, setCode] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
-
-  const [timeLeft, setTimeLeft] = useState(120);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -129,18 +126,6 @@ export default function Home() {
 
       const generatedCode = data.code;
       setCode(generatedCode);
-      setTimeLeft(120);
-
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleCloseClip();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
 
       const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
       const qrDataUrl = await QRCode.toDataURL(clipUrl, { width: 250, margin: 2 });
@@ -173,7 +158,6 @@ export default function Home() {
       setCode("");
       setFiles([]);
       setText("");
-      if (timerRef.current) clearInterval(timerRef.current);
     }
   };
 
@@ -235,14 +219,9 @@ export default function Home() {
                       </div>
                     )}
                     <div className="flex flex-col flex-1 gap-2 justify-between">
-                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 flex items-center gap-3">
-                        <Clock className="w-4 h-4 text-destructive shrink-0" />
-                        <div>
-                          <p className="text-xs font-medium text-destructive">Auto-deletes in</p>
-                          <p className="text-xl font-mono font-bold text-destructive leading-tight">
-                            {Math.floor(timeLeft / 60).toString().padStart(2, "0")}:{(timeLeft % 60).toString().padStart(2, "0")}
-                          </p>
-                        </div>
+                      <div className="rounded-lg bg-muted/40 border border-border p-2.5 flex items-center gap-2.5">
+                        <Info className="w-4 h-4 text-primary shrink-0" />
+                        <p className="text-xs text-muted-foreground">Clip auto-expires in 24 hours</p>
                       </div>
                       <Button className="w-full h-9" onClick={() => router.push(`/clip/${code}`)}>
                         <ExternalLink className="w-4 h-4 mr-2" /> View Clip
@@ -252,7 +231,7 @@ export default function Home() {
                 </CardContent>
 
                 <CardFooter className="border-t bg-muted/20 px-4 py-3 flex gap-3">
-                  <Button variant="outline" className="flex-1 h-9" onClick={() => { setCode(""); setFiles([]); setText(""); if (timerRef.current) clearInterval(timerRef.current); }}>
+                  <Button variant="outline" className="flex-1 h-9" onClick={() => { setCode(""); setFiles([]); setText(""); }}>
                     New Clip
                   </Button>
                   <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 h-9" onClick={handleCloseClip}>

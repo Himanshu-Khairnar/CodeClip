@@ -17,3 +17,9 @@ export function decryptText(cipherText: string): string {
     return "";
   }
 }
+
+// Hash the access code (with a pepper) so the raw code is never stored in the DB.
+// Deterministic so we can still look clips up by code.
+export function hashCode(code: string): string {
+  return CryptoJS.SHA256(code.toUpperCase() + SECRET_KEY).toString();
+}

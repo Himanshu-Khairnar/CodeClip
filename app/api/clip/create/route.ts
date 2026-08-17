@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
-import { encryptText } from "@/lib/encryption";
+import { encryptText, hashCode } from "@/lib/encryption";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 
 export const maxDuration = 60;
@@ -13,7 +13,6 @@ export async function POST(req: Request) {
 
     const formData = await req.formData();
     const text = (formData.get("text") as string) || "";
-    const password = (formData.get("password") as string) || "";
     const isOneTimeView = formData.get("isOneTimeView") === "true";
 
     const files: File[] = formData.getAll("files") as File[];
@@ -44,10 +43,12 @@ export async function POST(req: Request) {
       }
 
       const lastDotIndex = file.name.lastIndexOf(".");
-      const fileExt = lastDotIndex !== -1 ? file.name.substring(lastDotIndex) : "";
       const baseName = lastDotIndex !== -1 ? file.name.substring(0, lastDotIndex) : file.name;
       const sanitizedBase = baseName.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const publicId = `${Date.now()}-${sanitizedBase}${fileExt}`;
+      // Note: do NOT append the file extension to the public_id. Cloudinary appends
+      // the format automatically for images/videos, and raw files with an extension
+      // in the public_id are rejected (401 deny/ACL failure) on the delivery URL.
+      const publicId = `${Date.now()}-${sanitizedBase}`;
 
       let result;
       try {
@@ -55,8 +56,6 @@ export async function POST(req: Request) {
           resource_type: resourceType,
           folder: "online-clipboard",
           public_id: publicId,
-          use_filename: true,
-          unique_filename: false,
         });
       } catch (uploadErr) {
         console.warn(`Upload with resource_type ${resourceType} failed, trying raw fallback:`, uploadErr);
@@ -64,8 +63,6 @@ export async function POST(req: Request) {
           resource_type: "raw",
           folder: "online-clipboard",
           public_id: publicId,
-          use_filename: true,
-          unique_filename: false,
         });
       }
 
@@ -82,19 +79,19 @@ export async function POST(req: Request) {
     const encryptedText = encryptText(text);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const clip = await Clip.create({
-      code,
+    await Clip.create({
+      code: hashCode(code),
       text: encryptedText,
       files: savedFiles,
       totalSize,
-      password,
       isOneTimeView,
       expiresAt,
     });
 
-    return NextResponse.json({ code: clip.code }, { status: 201 });
-  } catch (error) {
+    return NextResponse.json({ code }, { status: 201 });
+  } catch (error: unknown) {
     console.error("Upload Error:", error);
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json({ message }, { status: 500 });
   }
 }

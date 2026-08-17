@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
-import { 
-  UploadCloud, CheckCircle2, Copy, ExternalLink, Clock, X,
+import {
+  UploadCloud, CheckCircle2, Copy, ExternalLink, Clock, X, Plus,
   FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -18,7 +18,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
   const [text, setText] = useState("");
-  const [password, setPassword] = useState("");
   const [isOneTimeView, setIsOneTimeView] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -93,7 +92,6 @@ export default function Home() {
 
     const formData = new FormData();
     formData.append("text", text);
-    if (password) formData.append("password", password);
     formData.append("isOneTimeView", String(isOneTimeView));
 
     for (const file of files) {
@@ -175,26 +173,13 @@ export default function Home() {
       setCode("");
       setFiles([]);
       setText("");
-      setPassword("");
       if (timerRef.current) clearInterval(timerRef.current);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-     
-
-      <div className="max-w-xl w-full">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <div className="w-12 h-12 bg-primary text-primary-foreground flex items-center justify-center rounded-xl font-bold text-3xl shadow-sm shrink-0">
-              C
-            </div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-primary">CodeClip</h1>
-          </div>
-          <p className="text-muted-foreground text-lg">Share text and files securely in seconds.</p>
-        </div>
-
+    <div className="flex-1 flex flex-col items-center justify-center p-4 pb-4">
+      <div className="w-full max-w-lg lg:max-w-xl">
         <Tabs defaultValue="create" className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="create">Create Clip</TabsTrigger>
@@ -206,23 +191,23 @@ export default function Home() {
               <Card className="border-border shadow-md animate-in fade-in zoom-in duration-300 rounded-none sm:rounded-xl overflow-hidden">
 
                 {/* Success header */}
-                <div className="flex flex-col items-center gap-3  py-6 px-6 text-center border-b border-border bg-muted/20">
-                  <div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
-                    <CheckCircle2 className="w-8 h-8 text-primary" />
+                <div className="flex flex-col items-center gap-2 py-4 px-6 text-center border-b border-border bg-muted/20">
+                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
+                    <CheckCircle2 className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold tracking-tight">Clip Created!</h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Share the code or scan the QR</p>
+                    <h2 className="text-lg font-bold tracking-tight">Clip Created!</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">Share the code or scan the QR</p>
                   </div>
                 </div>
 
-                <CardContent className="p-6 space-y-4">
+                <CardContent className="p-4 space-y-3">
                   {/* Access code */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Access Code</Label>
-                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-4 py-3">
-                      <span className="flex-1 text-3xl font-mono tracking-[0.3em] font-bold text-center">{code}</span>
-                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(code)} className="h-9 w-9 shrink-0">
+                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Access Code</Label>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-3 py-2">
+                      <span className="flex-1 text-2xl font-mono tracking-[0.3em] font-bold text-center">{code}</span>
+                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(code)} className="h-8 w-8 shrink-0">
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
@@ -230,152 +215,155 @@ export default function Home() {
 
                   {/* Direct link */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">Direct Link</Label>
-                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-3 py-2">
+                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Direct Link</Label>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-3 py-1.5">
                       <span className="flex-1 text-xs text-muted-foreground truncate font-mono">
                         {`${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}`}
                       </span>
-                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(`${window.location.origin}/clip/${code}`)} className="h-8 w-8 shrink-0">
+                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(`${window.location.origin}/clip/${code}`)} className="h-7 w-7 shrink-0">
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
 
                   {/* QR + timer side by side */}
-                  <div className="flex gap-4 items-stretch pt-1">
+                  <div className="flex gap-4 items-stretch pt-0.5">
                     {qrCodeUrl && (
-                      <div className="p-3 bg-white rounded-lg border border-border shadow-sm shrink-0">
+                      <div className="p-2 bg-white rounded-lg border border-border shadow-sm shrink-0">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={qrCodeUrl} alt="QR Code" className="w-32 h-32" />
+                        <img src={qrCodeUrl} alt="QR Code" className="w-28 h-28" />
                       </div>
                     )}
-                    <div className="flex flex-col flex-1 gap-3 justify-between">
-                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-center gap-3">
+                    <div className="flex flex-col flex-1 gap-2 justify-between">
+                      <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 flex items-center gap-3">
                         <Clock className="w-4 h-4 text-destructive shrink-0" />
                         <div>
                           <p className="text-xs font-medium text-destructive">Auto-deletes in</p>
-                          <p className="text-2xl font-mono font-bold text-destructive leading-tight">
+                          <p className="text-xl font-mono font-bold text-destructive leading-tight">
                             {Math.floor(timeLeft / 60).toString().padStart(2, "0")}:{(timeLeft % 60).toString().padStart(2, "0")}
                           </p>
                         </div>
                       </div>
-                      <Button className="w-full" onClick={() => router.push(`/clip/${code}`)}>
+                      <Button className="w-full h-9" onClick={() => router.push(`/clip/${code}`)}>
                         <ExternalLink className="w-4 h-4 mr-2" /> View Clip
                       </Button>
                     </div>
                   </div>
                 </CardContent>
 
-                <CardFooter className="border-t bg-muted/20 px-6 py-4 flex gap-3">
-                  <Button variant="outline" className="flex-1" onClick={() => { setCode(""); setFiles([]); setText(""); setPassword(""); if (timerRef.current) clearInterval(timerRef.current); }}>
+                <CardFooter className="border-t bg-muted/20 px-4 py-3 flex gap-3">
+                  <Button variant="outline" className="flex-1 h-9" onClick={() => { setCode(""); setFiles([]); setText(""); if (timerRef.current) clearInterval(timerRef.current); }}>
                     New Clip
                   </Button>
-                  <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleCloseClip}>
+                  <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 h-9" onClick={handleCloseClip}>
                     Delete
                   </Button>
                 </CardFooter>
               </Card>
             ) : (
-              <Card className="border-border shadow-sm duration-300 animate-in fade-in slide-in-from-bottom-4 rounded-none sm:rounded-md">
-                <CardHeader>
-                  <CardTitle>Create New Clipboard</CardTitle>
-                  <CardDescription>Upload text or files (up to 30MB total).</CardDescription>
+              <Card className="border-border shadow-md animate-in fade-in slide-in-from-bottom-4 rounded-none sm:rounded-md">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-xl">Send File</CardTitle>
+                  <CardDescription className="text-sm">Paste text or upload files (up to 30MB total).</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="text">Text Content</Label>
+                    <Label htmlFor="text" className="text-sm">Text Content</Label>
                     <Textarea
                       id="text"
                       placeholder="Paste your text here..."
-                      className="min-h-[120px] resize-y"
+                      className="h-40 w-full resize-y font-mono text-sm"
                       value={text}
                       onChange={(e) => setText(e.target.value)}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Files</Label>
+                    <Label className="text-sm">Files</Label>
                     <div
-                      className={`border border-dashed rounded-md p-8 text-center transition-colors cursor-pointer flex flex-col items-center justify-center gap-2 ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/40 hover:border-primary/60"}`}
+                      className={`border border-dashed rounded-md transition-colors h-40 overflow-hidden flex flex-col ${isDragging ? "border-primary bg-primary/5" : files.length > 0 ? "border-border bg-card" : "border-muted-foreground/40 hover:border-primary/60 cursor-pointer"}`}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => { if (files.length === 0) fileInputRef.current?.click(); }}
                     >
-                      <UploadCloud className="w-10 h-10 text-muted-foreground" />
-                      <p className="font-medium">Click or drag files here</p>
-                      <p className="text-sm text-muted-foreground">Any file type up to 30MB</p>
-                      <input
-                        type="file"
-                        multiple
-                        className="hidden"
-                        ref={fileInputRef}
-                        onChange={handleFileSelect}
-                      />
-                    </div>
+                        {files.length === 0 ? (
+                          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center cursor-pointer">
+                            <UploadCloud className="w-8 h-8 text-muted-foreground" />
+                            <p className="font-medium text-sm">Click or drag files here</p>
+                            <p className="text-xs text-muted-foreground">Any file type up to 30MB</p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2 shrink-0">
+                              <span className="text-xs font-medium text-muted-foreground">Selected Files ({files.length})</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs gap-1"
+                                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Add
+                              </Button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
+                              {files.map((file, i) => {
+                                const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                                let icon = <File className="w-4 h-4 text-muted-foreground shrink-0" />;
+                                if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+                                  icon = <ImageIcon className="w-4 h-4 text-primary shrink-0" />;
+                                } else if (['mp4', 'webm', 'mov', 'avi'].includes(ext)) {
+                                  icon = <Video className="w-4 h-4 text-primary shrink-0" />;
+                                } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
+                                  icon = <Music className="w-4 h-4 text-primary shrink-0" />;
+                                } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+                                  icon = <FileArchive className="w-4 h-4 text-primary shrink-0" />;
+                                } else if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'yaml'].includes(ext)) {
+                                  icon = <FileCode className="w-4 h-4 text-primary shrink-0" />;
+                                } else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
+                                  icon = <FileText className="w-4 h-4 text-primary shrink-0" />;
+                                }
 
-                    {files.length > 0 && (
-                      <div className="space-y-2 mt-4">
-                        <Label className="text-xs text-muted-foreground">Selected Files ({files.length})</Label>
-                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                          {files.map((file, i) => {
-                            const ext = file.name.split('.').pop()?.toLowerCase() || '';
-                            let icon = <File className="w-4 h-4 text-muted-foreground shrink-0" />;
-                            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
-                              icon = <ImageIcon className="w-4 h-4 text-primary shrink-0" />;
-                            } else if (['mp4', 'webm', 'mov', 'avi'].includes(ext)) {
-                              icon = <Video className="w-4 h-4 text-primary shrink-0" />;
-                            } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
-                              icon = <Music className="w-4 h-4 text-primary shrink-0" />;
-                            } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
-                              icon = <FileArchive className="w-4 h-4 text-primary shrink-0" />;
-                            } else if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'yaml'].includes(ext)) {
-                              icon = <FileCode className="w-4 h-4 text-primary shrink-0" />;
-                            } else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
-                              icon = <FileText className="w-4 h-4 text-primary shrink-0" />;
-                            }
+                                const formattedSize = file.size > 1024 * 1024
+                                  ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+                                  : `${(file.size / 1024).toFixed(1)} KB`;
 
-                            const formattedSize = file.size > 1024 * 1024
-                              ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
-                              : `${(file.size / 1024).toFixed(1)} KB`;
-
-                            return (
-                              <div key={i} className="flex items-center justify-between bg-muted/40 px-3 py-2 rounded-md text-sm border border-border">
-                                <div className="flex items-center gap-2.5 overflow-hidden">
-                                  {icon}
-                                  <span className="truncate font-medium text-xs">{file.name}</span>
-                                </div>
-                                <div className="flex items-center gap-3 shrink-0 ml-2">
-                                  <span className="text-xs text-muted-foreground">{formattedSize}</span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); removeFile(i); }}
-                                    className="text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded"
-                                    title="Remove file"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                                return (
+                                  <div key={i} className="flex items-center justify-between bg-muted/40 px-2.5 py-1.5 rounded-md text-sm border border-border">
+                                    <div className="flex items-center gap-2.5 overflow-hidden">
+                                      {icon}
+                                      <span className="truncate font-medium text-xs">{file.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0 ml-2">
+                                      <span className="text-xs text-muted-foreground">{formattedSize}</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); removeFile(i); }}
+                                        className="text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded"
+                                        title="Remove file"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          ref={fileInputRef}
+                          onChange={handleFileSelect}
+                        />
                       </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/30 p-4 border border-border rounded-md">
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Password Protect (Optional)</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        placeholder="Enter password..."
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                      />
                     </div>
-                    <div className="flex items-center space-x-2 pt-8">
+
+                  <div className="flex items-center justify-between gap-3 bg-muted/30 p-3 border border-border rounded-md">
+                    <div className="flex items-center space-x-2">
                       <input
                         type="checkbox"
                         id="oneTime"
@@ -383,12 +371,19 @@ export default function Home() {
                         checked={isOneTimeView}
                         onChange={(e) => setIsOneTimeView(e.target.checked)}
                       />
-                      <Label htmlFor="oneTime" className="cursor-pointer">Auto-delete after first view</Label>
+                      <Label htmlFor="oneTime" className="cursor-pointer text-xs">Auto-delete after first view</Label>
                     </div>
+                    <Button
+                      onClick={handleUpload}
+                      disabled={uploading}
+                      className="h-10 text-sm font-medium rounded-md shadow-sm shrink-0"
+                    >
+                      {uploading ? "Creating..." : "Create Clipboard"}
+                    </Button>
                   </div>
 
                   {uploading && (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <div className="flex justify-between text-sm">
                         <span>Uploading...</span>
                         <span>{progress}%</span>
@@ -397,44 +392,33 @@ export default function Home() {
                     </div>
                   )}
                 </CardContent>
-                <CardFooter>
-                  <Button
-                    onClick={handleUpload}
-                    disabled={uploading}
-                    className="w-full h-10 text-sm font-medium rounded-md shadow-sm"
-                  >
-                    {uploading ? "Creating Clipboard..." : "Create Clipboard"}
-                  </Button>
-                </CardFooter>
               </Card>
             )}
           </TabsContent>
 
           <TabsContent value="access" className="mt-0">
-            <Card className="border-border shadow-sm duration-300 animate-in fade-in rounded-none sm:rounded-md">
-              <CardHeader>
-                <CardTitle>Open Clipboard</CardTitle>
-                <CardDescription>Enter the 6-digit code to access shared content.</CardDescription>
+            <Card className="border-border shadow-sm animate-in fade-in rounded-none sm:rounded-md w-full">
+              <CardHeader className="pb-1 pt-4">
+                <CardTitle className="text-base">Access Clip</CardTitle>
+                <CardDescription className="text-xs">Enter the 6-digit code to open shared content.</CardDescription>
               </CardHeader>
               <form onSubmit={handleAccess}>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="code">Access Code</Label>
-                    <div className="relative">
-                      <Input
-                        id="code"
-                        placeholder="A1B2C3"
-                        className="text-center text-2xl tracking-[0.5em] uppercase font-mono rounded-md border-border h-16 shadow-inner"
-                        maxLength={6}
-                        value={accessCode}
-                        onChange={(e) => setAccessCode(e.target.value)}
-                        required
-                      />
-                    </div>
+                <CardContent className="space-y-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="code" className="text-xs">Access Code</Label>
+                    <Input
+                      id="code"
+                      placeholder="A1B2C3"
+                      className="text-center text-xl tracking-[0.4em] uppercase font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm"
+                      maxLength={6}
+                      value={accessCode}
+                      onChange={(e) => setAccessCode(e.target.value)}
+                      required
+                    />
                   </div>
                 </CardContent>
-                <CardFooter>
-                  <Button type="submit" className="w-full h-10 rounded-md shadow-sm mt-6" disabled={!accessCode.trim()}>
+                <CardFooter className="pt-2">
+                  <Button type="submit" className="w-full h-10 rounded-md shadow-sm" disabled={!accessCode.trim()}>
                     Access Now
                   </Button>
                 </CardFooter>

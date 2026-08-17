@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
-import { decryptText } from "@/lib/encryption";
+import { decryptText, hashCode } from "@/lib/encryption";
 import { deleteFromCloudinary } from "@/lib/cloudinary";
 
 export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
@@ -9,7 +9,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
     await dbConnect();
     const { code } = await params;
 
-    const clip = await Clip.findOne({ code: code.toUpperCase() });
+    const clip = await Clip.findOne({ code: hashCode(code) });
 
     if (!clip) {
       return NextResponse.json({ message: "Clip not found" }, { status: 404 });
@@ -19,21 +19,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
       return NextResponse.json({ message: "Clip has expired" }, { status: 410 });
     }
 
-    // If it's password protected, don't return text/files yet
-    if (clip.password) {
-      return NextResponse.json({
-        code: clip.code,
-        isPasswordProtected: true,
-        isOneTimeView: clip.isOneTimeView,
-        createdAt: clip.createdAt,
-      });
-    }
-
     // Decrypt text
     const text = decryptText(clip.text || "");
 
     const responseData = {
-      code: clip.code,
+      code,
       text,
       files: clip.files,
       isOneTimeView: clip.isOneTimeView,
@@ -62,7 +52,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ code:
     await dbConnect();
     const { code } = await params;
 
-    const clip = await Clip.findOneAndDelete({ code: code.toUpperCase() });
+    const clip = await Clip.findOneAndDelete({ code: hashCode(code) });
 
     if (!clip) {
       return NextResponse.json({ message: "Clip not found" }, { status: 404 });

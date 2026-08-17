@@ -30,11 +30,19 @@ export async function POST(req: Request) {
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
+      // Preserve file extension in public_id so Cloudinary handles raw/document/archive/binary files correctly
+      const lastDotIndex = file.name.lastIndexOf(".");
+      const fileExt = lastDotIndex !== -1 ? file.name.substring(lastDotIndex) : "";
+      const baseName = lastDotIndex !== -1 ? file.name.substring(0, lastDotIndex) : file.name;
+      const sanitizedBase = baseName.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const publicId = `${Date.now()}-${sanitizedBase}${fileExt}`;
+
       const result = await uploadToCloudinary(buffer, {
         resource_type: "auto",
         folder: "online-clipboard",
-        public_id: `${Date.now()}-${file.name.replace(/\.[^/.]+$/, "")}`,
-        use_filename: false,
+        public_id: publicId,
+        use_filename: true,
+        unique_filename: false,
       });
 
       savedFiles.push({

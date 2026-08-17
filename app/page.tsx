@@ -8,7 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
-import { UploadCloud, CheckCircle2, Copy, ExternalLink, Moon, Sun, Github, Clock } from "lucide-react";
+import { 
+  UploadCloud, CheckCircle2, Copy, ExternalLink, Moon, Sun, Github, Clock, X,
+  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File
+} from "lucide-react";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -314,14 +317,48 @@ export default function Home() {
                     {files.length > 0 && (
                       <div className="space-y-2 mt-4">
                         <Label className="text-xs text-muted-foreground">Selected Files ({files.length})</Label>
-                        <div className="space-y-2 max-h-32 overflow-y-auto">
-                          {files.map((file, i) => (
-                            <div key={i} className="flex items-center justify-between bg-muted/50 p-2 rounded-md text-sm border border-border">
-                              <span className="truncate max-w-[80%]">{file.name}</span>
-                              <span className="text-xs text-muted-foreground mr-2">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                              <button onClick={(e) => { e.stopPropagation(); removeFile(i); }} className="text-red-500 hover:text-red-700">✕</button>
-                            </div>
-                          ))}
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                          {files.map((file, i) => {
+                            const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                            let icon = <File className="w-4 h-4 text-slate-500 shrink-0" />;
+                            if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+                              icon = <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />;
+                            } else if (['mp4', 'webm', 'mov', 'avi'].includes(ext)) {
+                              icon = <Video className="w-4 h-4 text-purple-500 shrink-0" />;
+                            } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
+                              icon = <Music className="w-4 h-4 text-pink-500 shrink-0" />;
+                            } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+                              icon = <FileArchive className="w-4 h-4 text-amber-500 shrink-0" />;
+                            } else if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'yaml'].includes(ext)) {
+                              icon = <FileCode className="w-4 h-4 text-emerald-500 shrink-0" />;
+                            } else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
+                              icon = <FileText className="w-4 h-4 text-indigo-500 shrink-0" />;
+                            }
+
+                            const formattedSize = file.size > 1024 * 1024
+                              ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+                              : `${(file.size / 1024).toFixed(1)} KB`;
+
+                            return (
+                              <div key={i} className="flex items-center justify-between bg-muted/40 px-3 py-2 rounded-md text-sm border border-border">
+                                <div className="flex items-center gap-2.5 overflow-hidden">
+                                  {icon}
+                                  <span className="truncate font-medium text-xs">{file.name}</span>
+                                </div>
+                                <div className="flex items-center gap-3 shrink-0 ml-2">
+                                  <span className="text-xs text-muted-foreground">{formattedSize}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); removeFile(i); }}
+                                    className="text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded"
+                                    title="Remove file"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}

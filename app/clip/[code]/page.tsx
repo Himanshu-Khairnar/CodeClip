@@ -6,7 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Download, Copy, Lock, ShieldCheck, AlertTriangle, ArrowLeft, Sun, Moon } from "lucide-react";
+import { 
+  Download, Copy, Lock, ShieldCheck, AlertTriangle, ArrowLeft, Sun, Moon,
+  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File, Eye, EyeOff, Loader2
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { useTheme } from "next-themes";
@@ -22,6 +25,8 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [password, setPassword] = useState("");
     const [verifying, setVerifying] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(false);
+    const [downloadingMap, setDownloadingMap] = useState<Record<string, boolean>>({});
+    const [previewFileIndex, setPreviewFileIndex] = useState<number | null>(null);
 
     const { theme, setTheme } = useTheme();
 
@@ -89,22 +94,79 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         }
     };
 
-    const handleDownloadAll = () => {
-        if (!data?.files) return;
+    const downloadSingleFile = async (url: string, filename: string) => {
+        setDownloadingMap((prev) => ({ ...prev, [filename]: true }));
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("Network request failed");
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success(`Downloaded ${filename}`);
+        } catch (e) {
+            console.error("Blob download failed, opening direct link", e);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            toast.info(`Opening ${filename}`);
+        } finally {
+            setDownloadingMap((prev) => ({ ...prev, [filename]: false }));
+        }
+    };
 
-        data.files.forEach((file: any, index: number) => {
-            setTimeout(() => {
-                const a = document.createElement("a");
-                a.href = file.path;
-                a.download = file.filename;
-                a.target = "_blank";
-                a.rel = "noopener noreferrer";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }, index * 250);
-        });
-        toast.success("Downloading all files...");
+    const handleDownloadAll = async () => {
+        if (!data?.files || data.files.length === 0) return;
+        toast.info(`Downloading all ${data.files.length} files...`);
+        for (const file of data.files) {
+            await downloadSingleFile(file.path, file.filename);
+        }
+    };
+
+    const getFileIcon = (filename: string, resourceType?: string) => {
+        const ext = filename.split('.').pop()?.toLowerCase() || '';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext) || resourceType === 'image') {
+            return <ImageIcon className="w-5 h-5 text-blue-500 shrink-0" />;
+        }
+        if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext) || resourceType === 'video') {
+            return <Video className="w-5 h-5 text-purple-500 shrink-0" />;
+        }
+        if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) {
+            return <Music className="w-5 h-5 text-pink-500 shrink-0" />;
+        }
+        if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) {
+            return <FileArchive className="w-5 h-5 text-amber-500 shrink-0" />;
+        }
+        if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'xml', 'yaml', 'yml'].includes(ext)) {
+            return <FileCode className="w-5 h-5 text-emerald-500 shrink-0" />;
+        }
+        if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
+            return <FileText className="w-5 h-5 text-indigo-500 shrink-0" />;
+        }
+        return <File className="w-5 h-5 text-slate-500 shrink-0" />;
+    };
+
+    const formatSize = (bytes: number) => {
+        if (bytes === 0) return "0 B";
+        const k = 1024;
+        const sizes = ["B", "KB", "MB", "GB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+    };
+
+    const isPreviewable = (filename: string, resourceType?: string) => {
+        const ext = filename.split('.').pop()?.toLowerCase() || '';
+        return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'ogg'].includes(ext) || resourceType === 'image' || resourceType === 'video';
     };
 
     if (loading) {
@@ -249,20 +311,87 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="pt-4">
-                                    <div className="space-y-2">
-                                        {data.files.map((file: any, index: number) => (
-                                            <div key={index} className="flex items-center justify-between p-3 rounded-md border border-border bg-card hover:bg-muted/50 transition-colors">
-                                                <div className="overflow-hidden">
-                                                    <p className="font-medium truncate">{file.filename}</p>
-                                                    <p className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                    <div className="space-y-3">
+                                        {data.files.map((file: any, index: number) => {
+                                            const ext = file.filename.split('.').pop()?.toLowerCase() || '';
+                                            const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || file.resourceType === 'image';
+                                            const isVideo = ['mp4', 'webm', 'mov'].includes(ext) || file.resourceType === 'video';
+                                            const isAudio = ['mp3', 'wav', 'ogg', 'm4a'].includes(ext);
+                                            const isPreviewing = previewFileIndex === index;
+
+                                            return (
+                                                <div key={index} className="rounded-lg border border-border bg-card overflow-hidden transition-all hover:shadow-sm">
+                                                    <div className="flex items-center justify-between p-3.5 gap-3">
+                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                            {getFileIcon(file.filename, file.resourceType)}
+                                                            <div className="overflow-hidden">
+                                                                <p className="font-medium text-sm truncate" title={file.filename}>{file.filename}</p>
+                                                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                                                    <span>{formatSize(file.size)}</span>
+                                                                    <span>•</span>
+                                                                    <span className="uppercase">{ext || "FILE"}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2 shrink-0">
+                                                            {isPreviewable(file.filename, file.resourceType) && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => setPreviewFileIndex(isPreviewing ? null : index)}
+                                                                    className="h-8 px-2 text-xs"
+                                                                >
+                                                                    {isPreviewing ? <EyeOff className="w-3.5 h-3.5 mr-1" /> : <Eye className="w-3.5 h-3.5 mr-1" />}
+                                                                    {isPreviewing ? "Hide" : "Preview"}
+                                                                </Button>
+                                                            )}
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => downloadSingleFile(file.path, file.filename)}
+                                                                disabled={!!downloadingMap[file.filename]}
+                                                                className="h-8 shrink-0 text-xs"
+                                                            >
+                                                                {downloadingMap[file.filename] ? (
+                                                                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                                                ) : (
+                                                                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                                                                )}
+                                                                {downloadingMap[file.filename] ? "Downloading..." : "Download"}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Optional Inline Preview */}
+                                                    {isPreviewing && (
+                                                        <div className="border-t border-border bg-muted/20 p-4 flex justify-center items-center">
+                                                            {isImage && (
+                                                                <img
+                                                                    src={file.path}
+                                                                    alt={file.filename}
+                                                                    className="max-h-80 max-w-full object-contain rounded-md border border-border shadow-sm"
+                                                                />
+                                                            )}
+                                                            {isVideo && (
+                                                                <video
+                                                                    src={file.path}
+                                                                    controls
+                                                                    className="max-h-80 max-w-full rounded-md border border-border shadow-sm"
+                                                                />
+                                                            )}
+                                                            {isAudio && (
+                                                                <audio
+                                                                    src={file.path}
+                                                                    controls
+                                                                    className="w-full max-w-md"
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <Button variant="outline" size="sm" asChild className="shrink-0 ml-4">
-                                                    <a href={file.path} download={file.filename} target="_blank" rel="noopener noreferrer">
-                                                        <Download className="w-4 h-4 mr-2" /> Download
-                                                    </a>
-                                                </Button>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -273,3 +402,4 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         </div>
     );
 }
+

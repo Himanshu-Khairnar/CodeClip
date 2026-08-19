@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
 
+// Only allow proxying from our own Cloudinary delivery domain to prevent SSRF.
+const ALLOWED_HOST_SUFFIXES = [
+  "res.cloudinary.com",
+  "cloudinary.com",
+];
+
+function isAllowedUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase();
+    return ALLOWED_HOST_SUFFIXES.some(
+      (suffix) => host === suffix || host.endsWith(`.${suffix}`)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const fileUrl = searchParams.get("url");
@@ -9,6 +28,13 @@ export async function GET(req: NextRequest) {
 
   if (!fileUrl) {
     return NextResponse.json({ error: "File URL is required" }, { status: 400 });
+  }
+
+  if (!isAllowedUrl(fileUrl)) {
+    return NextResponse.json(
+      { error: "Only files hosted on Cloudinary can be proxied" },
+      { status: 403 }
+    );
   }
 
   try {

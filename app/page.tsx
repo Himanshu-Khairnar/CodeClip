@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, DragEvent } from "react";
+import { useState, useRef, DragEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -9,16 +9,57 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
-  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info,
-  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File
+  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info, Clock, Lock, History, Trash2,
+  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File, MessageCircle, Send, Mail
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+const MAX_TEXT_LENGTH = 500_000;
+const MAX_TOTAL_SIZE = 30 * 1024 * 1024;
+
+const EXPIRY_OPTIONS = [
+  { value: "1", label: "1 hour" },
+  { value: "24", label: "24 hours" },
+  { value: "168", label: "7 days" },
+];
+
+interface HistoryItem {
+  code: string;
+  url: string;
+  textSnippet: string;
+  fileCount: number;
+  createdAt: number;
+}
+
+const HISTORY_KEY = "codeclip-history";
+
+function loadHistory(): HistoryItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? (JSON.parse(raw) as HistoryItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistoryItem(item: HistoryItem) {
+  const history = loadHistory().filter((h) => h.code !== item.code);
+  history.unshift(item);
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 20)));
+  } catch {
+    // storage full — ignore
+  }
+}
+
 export default function Home() {
   const [text, setText] = useState("");
   const [isOneTimeView, setIsOneTimeView] = useState(false);
+  const [expiry, setExpiry] = useState("24");
+  const [password, setPassword] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -29,8 +70,14 @@ export default function Home() {
   const [accessCode, setAccessCode] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
 
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    setHistory(loadHistory());
+  }, []);
 
   const handleAccess = (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,13 +108,14 @@ export default function Home() {
     if (e.target.files && e.target.files.length > 0) {
       handleFiles(Array.from(e.target.files));
     }
+    e.target.value = "";
   };
 
   const handleFiles = (newFiles: File[]) => {
     const currentTotalSize = files.reduce((sum, f) => sum + f.size, 0);
     const newTotalSize = newFiles.reduce((sum, f) => sum + f.size, 0);
 
-    if (currentTotalSize + newTotalSize > 30 * 1024 * 1024) {
+    if (currentTotalSize + newTotalSize > MAX_TOTAL_SIZE) {
       toast.error("Total file size cannot exceed 30MB");
       return;
     }
@@ -78,7 +126,7 @@ export default function Home() {
     setFiles(files.filter((_, i) => i !== index));
   };
 
-  const handleUpload = async () => {
+  const handleUpload = () => {
     if (!text.trim() && files.length === 0) {
       toast.error("Please add some text or files to upload.");
       return;
@@ -90,56 +138,70 @@ export default function Home() {
     const formData = new FormData();
     formData.append("text", text);
     formData.append("isOneTimeView", String(isOneTimeView));
+    formData.append("expiry", expiry);
+    if (password.trim()) formData.append("password", password);
 
     for (const file of files) {
       formData.append("files", file);
     }
 
-    try {
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => (prev >= 90 ? 90 : prev + 10));
-      }, 500);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/clip/create");
 
-      const res = await fetch("/api/clip/create", {
-        method: "POST",
-        body: formData,
-      });
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
+      }
+    };
 
-      clearInterval(progressInterval);
-      setProgress(100);
-
-      if (!res.ok) {
-        const text = await res.text();
-        let message = "Something went wrong during upload.";
-        try {
-          const json = JSON.parse(text);
-          message = json.message || message;
-        } catch {
-          if (text.toLowerCase().includes("too large") || text.toLowerCase().includes("entity")) {
-            message = "File too large. Vercel limits uploads to 4.5MB on the free plan.";
-          }
+    xhr.onload = async () => {
+      let message = "Something went wrong during upload.";
+      let data: { code?: string; message?: string } | null = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        const t = xhr.responseText;
+        if (t.toLowerCase().includes("too large") || t.toLowerCase().includes("entity")) {
+          message = "File too large. Vercel limits uploads to 4.5MB on the free plan.";
         }
-        throw new Error(message);
       }
 
-      const data = await res.json();
+      if (xhr.status >= 200 && xhr.status < 300 && data?.code) {
+        setProgress(100);
+        const generatedCode = data.code;
+        setCode(generatedCode);
 
-      const generatedCode = data.code;
-      setCode(generatedCode);
+        const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
+        const qrDataUrl = await QRCode.toDataURL(clipUrl, { width: 250, margin: 2 });
+        setQrCodeUrl(qrDataUrl);
 
-      const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
-      const qrDataUrl = await QRCode.toDataURL(clipUrl, { width: 250, margin: 2 });
-      setQrCodeUrl(qrDataUrl);
+        saveHistoryItem({
+          code: generatedCode,
+          url: clipUrl,
+          textSnippet: text.trim().slice(0, 80),
+          fileCount: files.length,
+          createdAt: Date.now(),
+        });
+        setHistory(loadHistory());
 
-      toast.success("Clipboard created successfully!");
-    } catch (error: unknown) {
-      console.error(error);
-      const message = error instanceof Error ? error.message : "Something went wrong during upload.";
-      toast.error(message);
-    } finally {
+        toast.success("Clipboard created successfully!");
+      } else {
+        if (data && "message" in data && typeof data.message === "string") {
+          message = data.message;
+        }
+        toast.error(message);
+      }
       setUploading(false);
       setProgress(0);
-    }
+    };
+
+    xhr.onerror = () => {
+      toast.error("Network error during upload.");
+      setUploading(false);
+      setProgress(0);
+    };
+
+    xhr.send(formData);
   };
 
   const copyToClipboard = (textToCopy: string) => {
@@ -150,7 +212,7 @@ export default function Home() {
   const handleCloseClip = async () => {
     if (!code) return;
     try {
-      await fetch(`/api/clip/${code}`, { method: 'DELETE' });
+      await fetch(`/api/clip/${code}`, { method: "DELETE" });
       toast.info("Clip has been closed and deleted.");
     } catch (e) {
       console.error(e);
@@ -158,22 +220,47 @@ export default function Home() {
       setCode("");
       setFiles([]);
       setText("");
+      setHistory(loadHistory().filter((h) => h.code !== code));
     }
+  };
+
+  const removeFromHistory = (code: string) => {
+    const next = loadHistory().filter((h) => h.code !== code);
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+    setHistory(next);
+  };
+
+  const clipUrl = code ? `${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}` : "";
+  const shareText = `Check out my CodeClip: ${clipUrl}`;
+
+  const getFileIcon = (name: string) => {
+    const ext = name.split(".").pop()?.toLowerCase() || "";
+    if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext)) return <ImageIcon className="w-4 h-4 text-primary shrink-0" />;
+    if (["mp4", "webm", "mov", "avi"].includes(ext)) return <Video className="w-4 h-4 text-primary shrink-0" />;
+    if (["mp3", "wav", "ogg", "m4a"].includes(ext)) return <Music className="w-4 h-4 text-primary shrink-0" />;
+    if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return <FileArchive className="w-4 h-4 text-primary shrink-0" />;
+    if (["js", "jsx", "ts", "tsx", "html", "css", "json", "py", "java", "cpp", "c", "cs", "php", "rb", "go", "rs", "sh", "sql", "yaml"].includes(ext)) return <FileCode className="w-4 h-4 text-primary shrink-0" />;
+    if (["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "csv", "md"].includes(ext)) return <FileText className="w-4 h-4 text-primary shrink-0" />;
+    return <File className="w-4 h-4 text-muted-foreground shrink-0" />;
   };
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-4 pb-4">
       <div className="w-full max-w-lg lg:max-w-xl">
         <Tabs defaultValue="create" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="create">Create Clip</TabsTrigger>
             <TabsTrigger value="access">Access Clip</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="create" className="mt-0">
             {code ? (
               <Card className="border-border shadow-md animate-in fade-in zoom-in duration-300 rounded-none sm:rounded-xl overflow-hidden">
-
                 {/* Success header */}
                 <div className="flex flex-col items-center gap-2 py-4 px-6 text-center border-b border-border bg-muted/20">
                   <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
@@ -201,16 +288,14 @@ export default function Home() {
                   <div className="space-y-1.5">
                     <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Direct Link</Label>
                     <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-3 py-1.5">
-                      <span className="flex-1 text-xs text-muted-foreground truncate font-mono">
-                        {`${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}`}
-                      </span>
-                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(`${window.location.origin}/clip/${code}`)} className="h-7 w-7 shrink-0">
+                      <span className="flex-1 text-xs text-muted-foreground truncate font-mono">{clipUrl}</span>
+                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(clipUrl)} className="h-7 w-7 shrink-0">
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
 
-                  {/* QR + timer side by side */}
+                  {/* QR + info side by side */}
                   <div className="flex gap-4 items-stretch pt-0.5">
                     {qrCodeUrl && (
                       <div className="p-2 bg-white rounded-lg border border-border shadow-sm shrink-0">
@@ -221,10 +306,36 @@ export default function Home() {
                     <div className="flex flex-col flex-1 gap-2 justify-between">
                       <div className="rounded-lg bg-muted/40 border border-border p-2.5 flex items-center gap-2.5">
                         <Info className="w-4 h-4 text-primary shrink-0" />
-                        <p className="text-xs text-muted-foreground">Clip auto-expires in 24 hours</p>
+                        <p className="text-xs text-muted-foreground">
+                          Expires in {EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}
+                          {isOneTimeView ? " · one-time view" : ""}
+                          {password ? " · password protected" : ""}
+                        </p>
                       </div>
                       <Button className="w-full h-9" onClick={() => router.push(`/clip/${code}`)}>
                         <ExternalLink className="w-4 h-4 mr-2" /> View Clip
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Share buttons */}
+                  <div className="pt-1">
+                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Share</Label>
+                    <div className="flex gap-2 mt-1.5">
+                      <Button variant="outline" size="sm" className="flex-1 h-9" asChild>
+                        <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer">
+                          <MessageCircle className="w-4 h-4" /> WhatsApp
+                        </a>
+                      </Button>
+                      <Button variant="outline" size="sm" className="flex-1 h-9" asChild>
+                        <a href={`https://t.me/share/url?url=${encodeURIComponent(clipUrl)}&text=${encodeURIComponent("Check out my CodeClip")}`} target="_blank" rel="noopener noreferrer">
+                          <Send className="w-4 h-4" /> Telegram
+                        </a>
+                      </Button>
+                      <Button variant="outline" size="sm" className="flex-1 h-9" asChild>
+                        <a href={`mailto:?subject=${encodeURIComponent("CodeClip")}&body=${encodeURIComponent(shareText)}`}>
+                          <Mail className="w-4 h-4" /> Email
+                        </a>
                       </Button>
                     </div>
                   </div>
@@ -253,8 +364,10 @@ export default function Home() {
                       placeholder="Paste your text here..."
                       className="h-40 w-full resize-y font-mono text-sm"
                       value={text}
+                      maxLength={MAX_TEXT_LENGTH}
                       onChange={(e) => setText(e.target.value)}
                     />
+                    <p className="text-[11px] text-muted-foreground text-right">{text.length.toLocaleString()} / {MAX_TEXT_LENGTH.toLocaleString()} chars</p>
                   </div>
 
                   <div className="space-y-2">
@@ -288,22 +401,6 @@ export default function Home() {
                             </div>
                             <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
                               {files.map((file, i) => {
-                                const ext = file.name.split('.').pop()?.toLowerCase() || '';
-                                let icon = <File className="w-4 h-4 text-muted-foreground shrink-0" />;
-                                if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
-                                  icon = <ImageIcon className="w-4 h-4 text-primary shrink-0" />;
-                                } else if (['mp4', 'webm', 'mov', 'avi'].includes(ext)) {
-                                  icon = <Video className="w-4 h-4 text-primary shrink-0" />;
-                                } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
-                                  icon = <Music className="w-4 h-4 text-primary shrink-0" />;
-                                } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
-                                  icon = <FileArchive className="w-4 h-4 text-primary shrink-0" />;
-                                } else if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'yaml'].includes(ext)) {
-                                  icon = <FileCode className="w-4 h-4 text-primary shrink-0" />;
-                                } else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
-                                  icon = <FileText className="w-4 h-4 text-primary shrink-0" />;
-                                }
-
                                 const formattedSize = file.size > 1024 * 1024
                                   ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
                                   : `${(file.size / 1024).toFixed(1)} KB`;
@@ -311,7 +408,7 @@ export default function Home() {
                                 return (
                                   <div key={i} className="flex items-center justify-between bg-muted/40 px-2.5 py-1.5 rounded-md text-sm border border-border">
                                     <div className="flex items-center gap-2.5 overflow-hidden">
-                                      {icon}
+                                      {getFileIcon(file.name)}
                                       <span className="truncate font-medium text-xs">{file.name}</span>
                                     </div>
                                     <div className="flex items-center gap-3 shrink-0 ml-2">
@@ -340,6 +437,41 @@ export default function Home() {
                         />
                       </div>
                     </div>
+
+                  {/* Expiry selector */}
+                  <div className="space-y-2">
+                    <Label className="text-sm flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-muted-foreground" /> Expires in
+                    </Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {EXPIRY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setExpiry(opt.value)}
+                          className={`h-9 rounded-md border text-sm font-medium transition-colors ${expiry === opt.value ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-primary/50"}`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Password (optional) */}
+                  <div className="space-y-2">
+                    <Label htmlFor="clip-password" className="text-sm flex items-center gap-1.5">
+                      <Lock className="w-4 h-4 text-muted-foreground" /> Password (optional)
+                    </Label>
+                    <Input
+                      id="clip-password"
+                      type="password"
+                      placeholder="Protect this clip with a password"
+                      className="h-10 rounded-md"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      maxLength={64}
+                    />
+                  </div>
 
                   <div className="flex items-center justify-between gap-3 bg-muted/30 p-3 border border-border rounded-md">
                     <div className="flex items-center space-x-2">
@@ -379,7 +511,7 @@ export default function Home() {
             <Card className="border-border shadow-sm animate-in fade-in rounded-none sm:rounded-md w-full">
               <CardHeader className="pb-1 pt-4">
                 <CardTitle className="text-base">Access Clip</CardTitle>
-                <CardDescription className="text-xs">Enter the 6-digit code to open shared content.</CardDescription>
+                <CardDescription className="text-xs">Enter the 6-character code to open shared content.</CardDescription>
               </CardHeader>
               <form onSubmit={handleAccess}>
                 <CardContent className="space-y-2">
@@ -402,6 +534,45 @@ export default function Home() {
                   </Button>
                 </CardFooter>
               </form>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-0">
+            <Card className="border-border shadow-sm animate-in fade-in rounded-none sm:rounded-md w-full">
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <History className="w-4 h-4" /> Recent Clips
+                </CardTitle>
+                <CardDescription className="text-xs">Clips you created on this device (stored locally).</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {history.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">No clips created yet on this device.</p>
+                ) : (
+                  history.map((item) => (
+                    <div key={item.code} className="flex items-center gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5">
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => router.push(`/clip/${item.code}`)}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-sm tracking-widest text-primary">{item.code}</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {new Date(item.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {item.textSnippet && <p className="text-xs text-muted-foreground truncate mt-0.5">{item.textSnippet}</p>}
+                        {item.fileCount > 0 && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{item.fileCount} file(s)</p>
+                        )}
+                      </div>
+                      <Button variant="ghost" size="icon-sm" onClick={() => copyToClipboard(item.code)} title="Copy code">
+                        <Copy className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" onClick={() => removeFromHistory(item.code)} title="Remove from history" className="text-destructive hover:text-destructive">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </CardContent>
             </Card>
           </TabsContent>
         </Tabs>

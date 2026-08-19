@@ -1,6 +1,13 @@
 import CryptoJS from "crypto-js";
 
-const SECRET_KEY = process.env.ENCRYPTION_KEY || "default_super_secret_key_123!";
+if (!process.env.ENCRYPTION_KEY) {
+  throw new Error(
+    "ENCRYPTION_KEY environment variable is required. Generate one with:\n" +
+      'node -e "console.log(\'ENCRYPTION_KEY=\' + require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+  );
+}
+
+const SECRET_KEY: string = process.env.ENCRYPTION_KEY;
 
 export function encryptText(text: string): string {
   if (!text) return text;

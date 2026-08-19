@@ -16,6 +16,9 @@ export interface IClip extends mongoose.Document {
   createdAt: Date;
   expiresAt: Date;
   isOneTimeView?: boolean;
+  consumed?: boolean;
+  passwordHash?: string;
+  salt?: string;
 }
 
 const FileSchema = new mongoose.Schema({
@@ -32,11 +35,15 @@ const ClipSchema = new mongoose.Schema({
   files: [FileSchema],
   totalSize: { type: Number, default: 0 },
   isOneTimeView: { type: Boolean, default: false },
+  consumed: { type: Boolean, default: false },
+  passwordHash: { type: String },
+  salt: { type: String },
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
 });
 
-// TTL index for auto-expiry
-ClipSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// NOTE: no TTL index on expiresAt. The /api/cleanup cron deletes both the
+// MongoDB document AND the Cloudinary files, so a TTL index would orphan
+// the Cloudinary assets (the document disappears before the cron sees it).
 
 export default mongoose.models.Clip || mongoose.model<IClip>("Clip", ClipSchema);

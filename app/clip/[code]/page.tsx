@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, use, useCallback } from "react";
+import { useState, useEffect, use, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  Download, Copy, AlertTriangle, ArrowLeft,
-  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File, Eye, EyeOff, Loader2, CalendarDays
+  Download, Copy, AlertTriangle, ArrowLeft, Lock, FileArchive,
+  FileText, FileCode, Image as ImageIcon, Video, Music, File, Eye, EyeOff, Loader2, CalendarDays, Clock, Share2, MessageCircle, Send, Mail
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -26,7 +27,10 @@ interface ClipData {
     files: ClipFile[];
     isOneTimeView?: boolean;
     createdAt?: string;
+    expiresAt?: string;
 }
+
+const ONE_TIME_AUTO_DOWNLOAD_DELAY = 400;
 
 export default function ClipPage({ params }: { params: Promise<{ code: string }> }) {
     const unwrappedParams = use(params);
@@ -36,26 +40,44 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
+    const [needsPassword, setNeedsPassword] = useState(false);
+    const [password, setPassword] = useState("");
+    const [passwordChecking, setPasswordChecking] = useState(false);
+
     const [downloadingMap, setDownloadingMap] = useState<Record<string, boolean>>({});
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [previewFileIndex, setPreviewFileIndex] = useState<number | null>(null);
 
-    const fetchClip = useCallback(async () => {
+    const [timeLeft, setTimeLeft] = useState<{ h: number; m: number; s: number } | null>(null);
+
+    const fetchClip = useCallback(async (pwd?: string) => {
         try {
             setLoading(true);
-            const res = await fetch(`/api/clip/${code}`);
+            const headers: Record<string, string> = {};
+            if (pwd) headers["x-clip-password"] = pwd;
+
+            const res = await fetch(`/api/clip/${code}`, { headers });
             const resData = await res.json();
 
-            if (!res.ok) {
-                setError(resData.message || "Clip not found or expired.");
+            if (res.status === 401) {
+                setNeedsPassword(true);
+                setError("");
+                setLoading(false);
                 return;
             }
 
+            if (!res.ok) {
+                setError(resData.message || "Clip not found or expired.");
+                setLoading(false);
+                return;
+            }
+
+            setNeedsPassword(false);
             setData(resData);
+            setLoading(false);
         } catch (err) {
             console.error(err);
             setError("Clip not found or expired.");
-        } finally {
             setLoading(false);
         }
     }, [code]);
@@ -66,11 +88,65 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         }
     }, [code, fetchClip]);
 
+    // Live countdown to expiry
+    useEffect(() => {
+        if (!data?.expiresAt) return;
+        const expiresAtTime = new Date(data.expiresAt).getTime();
+        const update = () => {
+            const diff = expiresAtTime - Date.now();
+            if (diff <= 0) {
+                setTimeLeft({ h: 0, m: 0, s: 0 });
+                return;
+            }
+            setTimeLeft({
+                h: Math.floor(diff / 3600000),
+                m: Math.floor((diff % 3600000) / 60000),
+                s: Math.floor((diff % 60000) / 1000),
+            });
+        };
+        update();
+        const interval = setInterval(update, 1000);
+        return () => clearInterval(interval);
+    }, [data?.expiresAt]);
+
+    // One-time clips are deleted server-side on fetch — save the files locally
+    // immediately so the recipient keeps them.
+    useEffect(() => {
+        if (!data?.isOneTimeView || !data.files || data.files.length === 0) return;
+        const timers = data.files.map((file, i) =>
+            setTimeout(() => {
+                downloadSingleFile(file.path, file.filename).catch(() => {});
+            }, ONE_TIME_AUTO_DOWNLOAD_DELAY * (i + 1))
+        );
+        return () => timers.forEach(clearTimeout);
+    }, [data?.isOneTimeView, data?.files]);
+
+    const handlePasswordSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!password.trim()) return;
+        setPasswordChecking(true);
+        fetchClip(password).finally(() => setPasswordChecking(false));
+    };
+
     const copyText = () => {
         if (data?.text) {
             navigator.clipboard.writeText(data.text);
             toast.success("Text copied to clipboard!");
         }
+    };
+
+    const downloadTextAsFile = () => {
+        if (!data?.text) return;
+        const blob = new Blob([data.text], { type: "text/plain;charset=utf-8" });
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `clip-${code}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
+        toast.success("Text downloaded as .txt");
     };
 
     const downloadSingleFile = async (url: string, filename: string) => {
@@ -105,19 +181,33 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         }
     };
 
-    const handleDownloadAll = async () => {
+    const handleDownloadZip = async () => {
         if (!data?.files || data.files.length === 0 || downloadingAll) return;
         setDownloadingAll(true);
-        toast.info(`Downloading ${data.files.length} file(s)...`);
 
         try {
-            for (let i = 0; i < data.files.length; i++) {
-                const file = data.files[i];
-                await downloadSingleFile(file.path, file.filename);
-                if (i < data.files.length - 1) {
-                    await new Promise((resolve) => setTimeout(resolve, 600));
-                }
+            const headers: Record<string, string> = {};
+            if (password) headers["x-clip-password"] = password;
+
+            const res = await fetch(`/api/clip/${code}/zip`, { headers });
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                throw new Error(body?.message || "ZIP download failed");
             }
+
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = blobUrl;
+            link.download = `clip-${code}.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
+            toast.success(`Downloaded ${data.files.length} file(s) as ZIP`);
+        } catch (e) {
+            console.error(e);
+            toast.error(e instanceof Error ? e.message : "ZIP download failed");
         } finally {
             setDownloadingAll(false);
         }
@@ -159,6 +249,12 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'ogg'].includes(ext) || resourceType === 'image' || resourceType === 'video';
     };
 
+    const clipUrl = useMemo(
+        () => `${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}`,
+        [code]
+    );
+    const shareText = `Check out my CodeClip: ${clipUrl}`;
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center p-4">
@@ -171,6 +267,43 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                         <Skeleton className="h-32 w-full" />
                         <Skeleton className="h-10 w-full" />
                     </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    if (needsPassword) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center p-4">
+                <Card className="w-full max-w-md border-border shadow-lg">
+                    <CardHeader className="text-center">
+                        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 mx-auto mb-2">
+                            <Lock className="w-6 h-6 text-primary" />
+                        </div>
+                        <CardTitle className="text-xl">Password Protected</CardTitle>
+                        <CardDescription className="text-sm">This clip is locked. Enter the password to view it.</CardDescription>
+                    </CardHeader>
+                    <form onSubmit={handlePasswordSubmit}>
+                        <CardContent>
+                            <Input
+                                type="password"
+                                placeholder="Enter clip password"
+                                className="h-11 text-center rounded-md font-mono"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                autoFocus
+                            />
+                        </CardContent>
+                        <CardFooter className="flex gap-2">
+                            <Button type="button" variant="outline" className="flex-1" asChild>
+                                <Link href="/">Back</Link>
+                            </Button>
+                            <Button type="submit" className="flex-1" disabled={!password.trim() || passwordChecking}>
+                                {passwordChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                                {passwordChecking ? "Checking..." : "Unlock"}
+                            </Button>
+                        </CardFooter>
+                    </form>
                 </Card>
             </div>
         );
@@ -221,22 +354,56 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
                 {data ? (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {data.createdAt && (
-                            <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                                <CalendarDays className="w-3.5 h-3.5" />
-                                Created {format(new Date(data.createdAt), "MMM d, yyyy 'at' h:mm a")}
-                            </div>
-                        )}
+                        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                            {data.createdAt && (
+                                <span className="flex items-center gap-1.5">
+                                    <CalendarDays className="w-3.5 h-3.5" />
+                                    Created {format(new Date(data.createdAt), "MMM d, yyyy 'at' h:mm a")}
+                                </span>
+                            )}
+                            {data.expiresAt && timeLeft && (
+                                <span className={`flex items-center gap-1.5 font-mono ${timeLeft.h === 0 && timeLeft.m < 10 ? "text-destructive font-semibold" : ""}`}>
+                                    <Clock className="w-3.5 h-3.5" />
+                                    Expires in {timeLeft.h}h {timeLeft.m}m {timeLeft.s}s
+                                </span>
+                            )}
+                        </div>
 
                         {data.isOneTimeView && (
                             <div className="bg-primary/10 border border-primary/20 text-primary p-4 rounded-md flex items-start gap-3 shadow-sm">
                                 <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                                 <div>
                                     <p className="font-medium">One-Time View Enabled</p>
-                                    <p className="text-sm opacity-90">This clip has been permanently deleted from the server. If you refresh, it will be gone.</p>
+                                    <p className="text-sm opacity-90">
+                                        This clip can only be viewed once — it will be permanently deleted from the server when it expires.
+                                        {data.files.length > 0 && " Your files are being saved to this device automatically."}
+                                        {data.files.length === 0 && " If you refresh, it will be gone."}
+                                    </p>
                                 </div>
                             </div>
                         )}
+
+                        {/* Share buttons */}
+                        <div className="flex justify-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground mr-1">
+                                <Share2 className="w-3.5 h-3.5" /> Share:
+                            </span>
+                            <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                                <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer">
+                                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                                </a>
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                                <a href={`https://t.me/share/url?url=${encodeURIComponent(clipUrl)}&text=${encodeURIComponent("Check out my CodeClip")}`} target="_blank" rel="noopener noreferrer">
+                                    <Send className="w-3.5 h-3.5" /> Telegram
+                                </a>
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                                <a href={`mailto:?subject=${encodeURIComponent("CodeClip")}&body=${encodeURIComponent(shareText)}`}>
+                                    <Mail className="w-3.5 h-3.5" /> Email
+                                </a>
+                            </Button>
+                        </div>
 
                         {data.text && (
                             <Card className="border-border shadow-sm rounded-none sm:rounded-md">
@@ -245,13 +412,18 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                         <CardTitle className="text-lg flex items-center gap-2">
                                             Text Content
                                         </CardTitle>
-                                        <Button variant="ghost" size="sm" onClick={copyText} className="h-8">
-                                            <Copy className="w-4 h-4 mr-2" /> Copy
-                                        </Button>
+                                        <div className="flex gap-2">
+                                            <Button variant="ghost" size="sm" onClick={downloadTextAsFile} className="h-8">
+                                                <Download className="w-4 h-4 mr-2" /> .txt
+                                            </Button>
+                                            <Button variant="ghost" size="sm" onClick={copyText} className="h-8">
+                                                <Copy className="w-4 h-4 mr-2" /> Copy
+                                            </Button>
+                                        </div>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="pt-4">
-                                    <pre className="whitespace-pre-wrap font-sans bg-muted/20 p-4 rounded-md min-h-[100px] border border-muted/50 text-sm md:text-base selection:bg-primary/20">
+                                    <pre className="whitespace-pre-wrap font-mono bg-muted/20 p-4 rounded-md min-h-[100px] border border-muted/50 text-sm md:text-base selection:bg-primary/20">
                                         {data.text}
                                     </pre>
                                 </CardContent>
@@ -267,16 +439,16 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={handleDownloadAll}
+                                                onClick={handleDownloadZip}
                                                 disabled={downloadingAll}
                                                 className="h-8 shrink-0 text-xs"
                                             >
                                                 {downloadingAll ? (
                                                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                                                 ) : (
-                                                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                                                    <FileArchive className="w-3.5 h-3.5 mr-1.5" />
                                                 )}
-                                                {downloadingAll ? "Downloading All..." : "Download All"}
+                                                {downloadingAll ? "Bundling..." : "Download All (ZIP)"}
                                             </Button>
                                         )}
                                     </div>

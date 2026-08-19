@@ -3,20 +3,48 @@ import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { deleteFromCloudinary } from "@/lib/cloudinary";
 
-export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+export const maxDuration = 60;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+async function dropLegacyTtlIndex() {
+  // Older deployments have a TTL index on expiresAt that orphans Cloudinary
+  // files (the doc vanishes before the cron can clean up the assets). Drop it
+  // once so the cron becomes the single cleanup path.
+  try {
+    const conn = await dbConnect();
+    const clips = conn.connection.collection("clips");
+    const indexes = await clips.indexes();
+    for (const index of indexes) {
+      if (index.expireAfterSeconds !== undefined && index.name && index.name !== "_id_") {
+        await clips.dropIndex(index.name);
+        console.log(`Dropped legacy TTL index: ${index.name}`);
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to drop legacy TTL index:", err);
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: "CRON_SECRET is not configured; cleanup is disabled" },
+      { status: 503 }
+    );
+  }
+
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   await dbConnect();
+  await dropLegacyTtlIndex();
 
-  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+  const now = new Date();
 
   const expiredClips = await Clip.find({
-    createdAt: { $lt: twoMinutesAgo },
+    expiresAt: { $lt: now },
   }).lean();
 
   if (expiredClips.length === 0) {

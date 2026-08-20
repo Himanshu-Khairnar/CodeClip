@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
   UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info, Clock, Lock, History, Trash2,
-  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File, MessageCircle, Send, Mail
+  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
@@ -73,6 +73,7 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -96,11 +97,48 @@ export default function Home() {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
+    // Support dropping folders via DataTransferItem
+    const items = e.dataTransfer.items;
+    if (items && items.length > 0) {
+      const collected: File[] = [];
+      const pending: Promise<void>[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const entry = (items[i] as unknown as { webkitGetAsEntry?: () => FileSystemEntry }).webkitGetAsEntry?.();
+        if (entry) {
+          pending.push(traverseEntry(entry, collected));
+        }
+      }
+      if (pending.length > 0) {
+        await Promise.all(pending);
+        if (collected.length > 0) {
+          handleFiles(collected);
+          return;
+        }
+      }
+    }
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const traverseEntry = async (entry: any, out: File[]): Promise<void> => {
+    if (entry.isFile) {
+      await new Promise<void>((resolve) => {
+        entry.file((file: File) => { out.push(file); resolve(); }, () => resolve());
+      });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      await new Promise<void>((resolve) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        reader.readEntries(async (entries: any[]) => {
+          for (const child of entries) await traverseEntry(child, out);
+          resolve();
+        }, () => resolve());
+      });
     }
   };
 
@@ -109,6 +147,13 @@ export default function Home() {
       handleFiles(Array.from(e.target.files));
     }
     e.target.value = "";
+  };
+
+  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(Array.from(e.target.files));
+    }
+    if (e.target) e.target.value = "";
   };
 
   const handleFiles = (newFiles: File[]) => {
@@ -235,7 +280,6 @@ export default function Home() {
   };
 
   const clipUrl = code ? `${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}` : "";
-  const shareText = `Check out my CodeClip: ${clipUrl}`;
 
   const getFileIcon = (name: string) => {
     const ext = name.split(".").pop()?.toLowerCase() || "";
@@ -318,27 +362,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Share buttons */}
-                  <div className="pt-1">
-                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Share</Label>
-                    <div className="grid grid-cols-3 gap-2 mt-1.5">
-                      <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm px-1 sm:px-3" asChild>
-                        <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer">
-                          <MessageCircle className="w-4 h-4 sm:mr-1" /> <span className="hidden xs:inline sm:inline">WhatsApp</span><span className="xs:hidden sm:hidden">WA</span>
-                        </a>
-                      </Button>
-                      <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm px-1 sm:px-3" asChild>
-                        <a href={`https://t.me/share/url?url=${encodeURIComponent(clipUrl)}&text=${encodeURIComponent("Check out my CodeClip")}`} target="_blank" rel="noopener noreferrer">
-                          <Send className="w-4 h-4 sm:mr-1" /> <span className="hidden xs:inline">Telegram</span><span className="xs:hidden">TG</span>
-                        </a>
-                      </Button>
-                      <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm px-1 sm:px-3" asChild>
-                        <a href={`mailto:?subject=${encodeURIComponent("CodeClip")}&body=${encodeURIComponent(shareText)}`}>
-                          <Mail className="w-4 h-4 sm:mr-1" /> Email
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
                 </CardContent>
 
                 <CardFooter className="border-t bg-muted/20 px-4 py-3 flex gap-3">
@@ -379,25 +402,44 @@ export default function Home() {
                       onDrop={handleDrop}
                       onClick={() => { if (files.length === 0) fileInputRef.current?.click(); }}
                     >
-                        {files.length === 0 ? (
-                          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center cursor-pointer">
+                         {files.length === 0 ? (
+                          <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-4 text-center">
                             <UploadCloud className="w-8 h-8 text-muted-foreground" />
-                            <p className="font-medium text-sm">Click or drag files here</p>
+                            <p className="font-medium text-sm">Click or drag files &amp; folders here</p>
                             <p className="text-xs text-muted-foreground">Any file type up to 30MB</p>
+                            <div className="flex gap-2 mt-2">
+                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
+                                <Plus className="w-3 h-3 mr-1" /> Files
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); folderInputRef.current?.click(); }}>
+                                <FileArchive className="w-3 h-3 mr-1" /> Folder
+                              </Button>
+                            </div>
                           </div>
                         ) : (
                           <>
-                            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2 shrink-0">
-                              <span className="text-xs font-medium text-muted-foreground">Selected Files ({files.length})</span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs gap-1"
-                                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                              >
-                                <Plus className="w-3.5 h-3.5" /> Add
-                              </Button>
+                            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2 shrink-0 gap-2">
+                              <span className="text-xs font-medium text-muted-foreground truncate">Selected Files ({files.length}) · {(files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(2)} MB</span>
+                              <div className="flex gap-1 shrink-0">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs gap-1"
+                                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                                >
+                                  <Plus className="w-3.5 h-3.5" /> Files
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs gap-1 hidden sm:inline-flex"
+                                  onClick={(e) => { e.stopPropagation(); folderInputRef.current?.click(); }}
+                                >
+                                  <FileArchive className="w-3.5 h-3.5" /> Folder
+                                </Button>
+                              </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
                               {files.map((file, i) => {
@@ -434,6 +476,14 @@ export default function Home() {
                           className="hidden"
                           ref={fileInputRef}
                           onChange={handleFileSelect}
+                        />
+                        <input
+                          type="file"
+                          multiple
+                          className="hidden"
+                          ref={folderInputRef}
+                          onChange={handleFolderSelect}
+                          {...({ webkitdirectory: "", directory: "" } as unknown as React.InputHTMLAttributes<HTMLInputElement>)}
                         />
                       </div>
                     </div>

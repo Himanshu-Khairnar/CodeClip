@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useEffect, use, useCallback, useMemo } from "react";
+import { useState, useEffect, use, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
   Download, Copy, AlertTriangle, ArrowLeft, Lock, FileArchive,
-  FileText, FileCode, Image as ImageIcon, Video, Music, File, Eye, EyeOff, Loader2, CalendarDays, Clock, Share2, MessageCircle, Send, Mail
+  FileText, FileCode, Image as ImageIcon, Video, Music, File, Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { format } from "date-fns";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import "highlight.js/styles/github-dark.css";
 
 interface ClipFile {
     filename: string;
@@ -47,8 +51,11 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [downloadingMap, setDownloadingMap] = useState<Record<string, boolean>>({});
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [previewFileIndex, setPreviewFileIndex] = useState<number | null>(null);
+    const [textView, setTextView] = useState<"raw" | "preview">("preview");
+    const [textFilePreviews, setTextFilePreviews] = useState<Record<string, string>>({});
 
     const [timeLeft, setTimeLeft] = useState<{ h: number; m: number; s: number } | null>(null);
+    const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
     const fetchClip = useCallback(async (pwd?: string) => {
         try {
@@ -121,6 +128,21 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         return () => timers.forEach(clearTimeout);
     }, [data?.isOneTimeView, data?.files]);
 
+    // Fetch text-based file previews on demand
+    useEffect(() => {
+        if (previewFileIndex === null || !data?.files[previewFileIndex]) return;
+        const file = data.files[previewFileIndex];
+        if (!isTextPreview(file.filename) || textFilePreviews[file.filename] !== undefined) return;
+        const endpoint = `/api/download?url=${encodeURIComponent(file.path)}&filename=${encodeURIComponent(file.filename)}`;
+        fetch(endpoint).then(async (res) => {
+            if (!res.ok) throw new Error("preview fetch failed");
+            const text = await res.text();
+            setTextFilePreviews(prev => ({ ...prev, [file.filename]: text.slice(0, 50_000) }));
+        }).catch(() => {
+            setTextFilePreviews(prev => ({ ...prev, [file.filename]: "Failed to load preview." }));
+        });
+    }, [previewFileIndex, data?.files, textFilePreviews]);
+
     const handlePasswordSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!password.trim()) return;
@@ -178,6 +200,29 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
             toast.info(`Downloading ${filename}...`);
         } finally {
             setDownloadingMap((prev) => ({ ...prev, [filename]: false }));
+        }
+    };
+
+    const handleDeleteFile = async (filename: string, key?: string) => {
+        if (!data || !key) {
+            toast.error("Cannot delete this file");
+            return;
+        }
+        if (!confirm(`Delete "${filename}" permanently?`)) return;
+        setDeletingFile(filename);
+        try {
+            const headers: Record<string, string> = {};
+            if (password) headers["x-clip-password"] = password;
+            const res = await fetch(`/api/clip/${code}/file?key=${encodeURIComponent(key)}`, { method: "DELETE", headers });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.message || "Delete failed");
+            setData(prev => prev ? ({ ...prev, files: prev.files.filter(f => f.key !== key) }) : prev);
+            toast.success(`Deleted ${filename}`);
+            setPreviewFileIndex(null);
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Delete failed");
+        } finally {
+            setDeletingFile(null);
         }
     };
 
@@ -246,14 +291,18 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
     const isPreviewable = (filename: string, resourceType?: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
-        return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'ogg'].includes(ext) || resourceType === 'image' || resourceType === 'video';
+        const previewExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'pdf', 'txt', 'md', 'csv', 'json', 'log', 'js', 'ts', 'py', 'html', 'css', 'xml', 'yaml', 'yml'];
+        return previewExts.includes(ext) || resourceType === 'image' || resourceType === 'video';
     };
 
-    const clipUrl = useMemo(
-        () => `${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}`,
-        [code]
-    );
-    const shareText = `Check out my CodeClip: ${clipUrl}`;
+    const isTextPreview = (filename: string) => {
+        const ext = filename.split('.').pop()?.toLowerCase() || '';
+        return ['txt', 'md', 'csv', 'json', 'log', 'js', 'ts', 'jsx', 'tsx', 'py', 'html', 'css', 'xml', 'yaml', 'yml'].includes(ext);
+    };
+
+    const isPdfPreview = (filename: string) => filename.toLowerCase().endsWith('.pdf');
+
+
 
     if (loading) {
         return (
@@ -383,36 +432,18 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                             </div>
                         )}
 
-                        {/* Share buttons */}
-                        <div className="flex flex-wrap justify-center items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground mr-1 w-full sm:w-auto justify-center sm:justify-start mb-1 sm:mb-0">
-                                <Share2 className="w-3.5 h-3.5" /> Share:
-                            </span>
-                            <Button variant="outline" size="sm" className="h-8 text-xs flex-1 sm:flex-none min-w-[90px]" asChild>
-                                <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer">
-                                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                                </a>
-                            </Button>
-                            <Button variant="outline" size="sm" className="h-8 text-xs flex-1 sm:flex-none min-w-[90px]" asChild>
-                                <a href={`https://t.me/share/url?url=${encodeURIComponent(clipUrl)}&text=${encodeURIComponent("Check out my CodeClip")}`} target="_blank" rel="noopener noreferrer">
-                                    <Send className="w-3.5 h-3.5" /> Telegram
-                                </a>
-                            </Button>
-                            <Button variant="outline" size="sm" className="h-8 text-xs flex-1 sm:flex-none min-w-[70px]" asChild>
-                                <a href={`mailto:?subject=${encodeURIComponent("CodeClip")}&body=${encodeURIComponent(shareText)}`}>
-                                    <Mail className="w-3.5 h-3.5" /> Email
-                                </a>
-                            </Button>
-                        </div>
-
                         {data.text && (
                             <Card className="border-border shadow-sm rounded-xl overflow-hidden">
                                 <CardHeader className="pb-3 border-b bg-muted/30 px-4 sm:px-6">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                         <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                                            Text Content
+                                            <FileCode className="w-4 h-4 text-primary" /> Text Content
                                         </CardTitle>
-                                        <div className="flex gap-2 self-stretch sm:self-auto">
+                                        <div className="flex gap-2 self-stretch sm:self-auto flex-wrap">
+                                            <div className="flex rounded-md border border-border overflow-hidden">
+                                                <button onClick={() => setTextView("preview")} className={`px-3 py-1.5 text-xs font-medium transition-colors ${textView === "preview" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}>Preview</button>
+                                                <button onClick={() => setTextView("raw")} className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${textView === "raw" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}>Raw</button>
+                                            </div>
                                             <Button variant="ghost" size="sm" onClick={downloadTextAsFile} className="h-8 flex-1 sm:flex-none text-xs sm:text-sm">
                                                 <Download className="w-4 h-4 mr-1 sm:mr-2" /> .txt
                                             </Button>
@@ -423,9 +454,15 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                     </div>
                                 </CardHeader>
                                 <CardContent className="pt-4 px-4 sm:px-6">
-                                    <pre className="whitespace-pre-wrap break-words font-mono bg-muted/20 p-3 sm:p-4 rounded-md min-h-[100px] border border-muted/50 text-sm sm:text-base selection:bg-primary/20 overflow-x-auto max-w-full">
-                                        {data.text}
-                                    </pre>
+                                    {textView === "raw" ? (
+                                        <pre className="whitespace-pre-wrap break-words font-mono bg-muted/20 p-3 sm:p-4 rounded-md min-h-[100px] border border-muted/50 text-sm sm:text-base selection:bg-primary/20 overflow-x-auto max-w-full">
+                                            {data.text}
+                                        </pre>
+                                    ) : (
+                                        <div className="markdown-preview min-h-[100px] border border-muted/50 rounded-md bg-muted/20 p-3 sm:p-4 overflow-x-auto max-w-full text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:mb-2 [&_p]:leading-7 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-1 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[13px] [&_pre]:bg-[#0d1117] [&_pre]:text-[#e6edf3] [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_hr]:my-4 [&_hr]:border-border">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{data.text || ""}</ReactMarkdown>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         )}
@@ -507,11 +544,21 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                 <span className="hidden sm:inline">{downloadingMap[file.filename] ? "Downloading..." : "Download"}</span>
                                                                 <span className="sm:hidden">Download</span>
                                                             </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleDeleteFile(file.filename, file.key)}
+                                                                disabled={deletingFile === file.filename}
+                                                                className="h-9 w-9 sm:h-8 sm:w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                                                title="Delete file"
+                                                            >
+                                                                {deletingFile === file.filename ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                                            </Button>
                                                         </div>
                                                     </div>
 
                                                     {isPreviewing && (
-                                                        <div className="border-t border-border bg-muted/20 p-4 flex justify-center items-center">
+                                                        <div className="border-t border-border bg-muted/20 p-3 sm:p-4 flex justify-center items-center overflow-hidden">
                                                             {isImage && (
                                                                 /* eslint-disable-next-line @next/next/no-img-element */
                                                                 <img
@@ -533,6 +580,17 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                     controls
                                                                     className="w-full max-w-md"
                                                                 />
+                                                            )}
+                                                            {isPdfPreview(file.filename) && (
+                                                                <iframe src={file.path} title={file.filename} className="w-full h-[60vh] sm:h-[500px] rounded-md border border-border bg-white" />
+                                                            )}
+                                                            {isTextPreview(file.filename) && (
+                                                                <div className="w-full max-h-80 overflow-auto bg-[#0d1117] text-[#e6edf3] p-3 rounded-md border border-border font-mono text-xs sm:text-sm whitespace-pre-wrap break-words">
+                                                                    {textFilePreviews[file.filename] === undefined ? "Loading preview..." : textFilePreviews[file.filename] || "Empty file"}
+                                                                </div>
+                                                            )}
+                                                            {!isImage && !isVideo && !isAudio && !isPdfPreview(file.filename) && !isTextPreview(file.filename) && (
+                                                                <p className="text-sm text-muted-foreground py-4">No preview available for this file type.</p>
                                                             )}
                                                         </div>
                                                     )}

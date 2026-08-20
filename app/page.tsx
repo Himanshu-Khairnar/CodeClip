@@ -249,18 +249,18 @@ export default function Home() {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-4 pb-4">
+    <div className="flex-1 flex flex-col items-center justify-start sm:justify-center px-3 py-4 sm:p-4 pb-6 sm:pb-4">
       <div className="w-full max-w-lg lg:max-w-xl">
         <Tabs defaultValue="create" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="create">Create Clip</TabsTrigger>
-            <TabsTrigger value="access">Access Clip</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 mb-4 sm:mb-6 h-10 sm:h-11 p-1">
+            <TabsTrigger value="create" className="text-xs sm:text-sm px-1 sm:px-3">Create Clip</TabsTrigger>
+            <TabsTrigger value="access" className="text-xs sm:text-sm px-1 sm:px-3">Access Clip</TabsTrigger>
+            <TabsTrigger value="history" className="text-xs sm:text-sm px-1 sm:px-3">History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="create" className="mt-0">
             {code ? (
-              <Card className="border-border shadow-md animate-in fade-in zoom-in duration-300 rounded-none sm:rounded-xl overflow-hidden">
+              <Card className="border-border shadow-md animate-in fade-in zoom-in duration-300 rounded-xl overflow-hidden">
                 {/* Success header */}
                 <div className="flex flex-col items-center gap-2 py-4 px-6 text-center border-b border-border bg-muted/20">
                   <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
@@ -276,8 +276,8 @@ export default function Home() {
                   {/* Access code */}
                   <div className="space-y-1.5">
                     <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Access Code</Label>
-                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-3 py-2">
-                      <span className="flex-1 text-2xl font-mono tracking-[0.3em] font-bold text-center">{code}</span>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-2.5 sm:px-3 py-2">
+                      <span className="flex-1 text-xl sm:text-2xl font-mono tracking-[0.2em] sm:tracking-[0.3em] font-bold text-center break-all">{code}</span>
                       <Button variant="ghost" size="icon" onClick={() => copyToClipboard(code)} className="h-8 w-8 shrink-0">
                         <Copy className="h-4 w-4" />
                       </Button>
@@ -287,32 +287,32 @@ export default function Home() {
                   {/* Direct link */}
                   <div className="space-y-1.5">
                     <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Direct Link</Label>
-                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-3 py-1.5">
-                      <span className="flex-1 text-xs text-muted-foreground truncate font-mono">{clipUrl}</span>
+                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-2.5 sm:px-3 py-1.5">
+                      <span className="flex-1 text-[11px] sm:text-xs text-muted-foreground truncate font-mono min-w-0">{clipUrl}</span>
                       <Button variant="ghost" size="icon" onClick={() => copyToClipboard(clipUrl)} className="h-7 w-7 shrink-0">
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
 
-                  {/* QR + info side by side */}
-                  <div className="flex gap-4 items-stretch pt-0.5">
+                  {/* QR + info - stacks on mobile */}
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch pt-0.5">
                     {qrCodeUrl && (
-                      <div className="p-2 bg-white rounded-lg border border-border shadow-sm shrink-0">
+                      <div className="p-2 bg-white rounded-lg border border-border shadow-sm shrink-0 self-center sm:self-auto">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={qrCodeUrl} alt="QR Code" className="w-28 h-28" />
+                        <img src={qrCodeUrl} alt="QR Code" className="w-32 h-32 sm:w-28 sm:h-28" />
                       </div>
                     )}
-                    <div className="flex flex-col flex-1 gap-2 justify-between">
+                    <div className="flex flex-col flex-1 gap-2 justify-between min-w-0">
                       <div className="rounded-lg bg-muted/40 border border-border p-2.5 flex items-center gap-2.5">
                         <Info className="w-4 h-4 text-primary shrink-0" />
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground leading-snug">
                           Expires in {EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}
                           {isOneTimeView ? " · one-time view" : ""}
                           {password ? " · password protected" : ""}
                         </p>
                       </div>
-                      <Button className="w-full h-9" onClick={() => router.push(`/clip/${code}`)}>
+                      <Button className="w-full h-10 sm:h-9 text-sm" onClick={() => router.push(`/clip/${code}`)}>
                         <ExternalLink className="w-4 h-4 mr-2" /> View Clip
                       </Button>
                     </div>
@@ -321,20 +321,20 @@ export default function Home() {
                   {/* Share buttons */}
                   <div className="pt-1">
                     <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Share</Label>
-                    <div className="flex gap-2 mt-1.5">
-                      <Button variant="outline" size="sm" className="flex-1 h-9" asChild>
+                    <div className="grid grid-cols-3 gap-2 mt-1.5">
+                      <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm px-1 sm:px-3" asChild>
                         <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer">
-                          <MessageCircle className="w-4 h-4" /> WhatsApp
+                          <MessageCircle className="w-4 h-4 sm:mr-1" /> <span className="hidden xs:inline sm:inline">WhatsApp</span><span className="xs:hidden sm:hidden">WA</span>
                         </a>
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1 h-9" asChild>
+                      <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm px-1 sm:px-3" asChild>
                         <a href={`https://t.me/share/url?url=${encodeURIComponent(clipUrl)}&text=${encodeURIComponent("Check out my CodeClip")}`} target="_blank" rel="noopener noreferrer">
-                          <Send className="w-4 h-4" /> Telegram
+                          <Send className="w-4 h-4 sm:mr-1" /> <span className="hidden xs:inline">Telegram</span><span className="xs:hidden">TG</span>
                         </a>
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1 h-9" asChild>
+                      <Button variant="outline" size="sm" className="h-9 text-xs sm:text-sm px-1 sm:px-3" asChild>
                         <a href={`mailto:?subject=${encodeURIComponent("CodeClip")}&body=${encodeURIComponent(shareText)}`}>
-                          <Mail className="w-4 h-4" /> Email
+                          <Mail className="w-4 h-4 sm:mr-1" /> Email
                         </a>
                       </Button>
                     </div>
@@ -351,7 +351,7 @@ export default function Home() {
                 </CardFooter>
               </Card>
             ) : (
-              <Card className="border-border shadow-md animate-in fade-in slide-in-from-bottom-4 rounded-none sm:rounded-md">
+              <Card className="border-border shadow-md animate-in fade-in slide-in-from-bottom-4 rounded-xl">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-xl">Send File</CardTitle>
                   <CardDescription className="text-sm">Paste text or upload files (up to 30MB total).</CardDescription>
@@ -473,21 +473,21 @@ export default function Home() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 bg-muted/30 p-3 border border-border rounded-md">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/30 p-3 border border-border rounded-md">
                     <div className="flex items-center space-x-2">
                       <input
                         type="checkbox"
                         id="oneTime"
-                        className="w-4 h-4 rounded border-input text-primary focus:ring-primary accent-primary"
+                        className="w-4 h-4 rounded border-input text-primary focus:ring-primary accent-primary shrink-0"
                         checked={isOneTimeView}
                         onChange={(e) => setIsOneTimeView(e.target.checked)}
                       />
-                      <Label htmlFor="oneTime" className="cursor-pointer text-xs">Auto-delete after first view</Label>
+                      <Label htmlFor="oneTime" className="cursor-pointer text-xs sm:text-sm leading-tight">Auto-delete after first view</Label>
                     </div>
                     <Button
                       onClick={handleUpload}
                       disabled={uploading}
-                      className="h-10 text-sm font-medium rounded-md shadow-sm shrink-0"
+                      className="h-11 sm:h-10 text-sm font-medium rounded-md shadow-sm w-full sm:w-auto shrink-0"
                     >
                       {uploading ? "Creating..." : "Create Clipboard"}
                     </Button>
@@ -508,7 +508,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="access" className="mt-0">
-            <Card className="border-border shadow-sm animate-in fade-in rounded-none sm:rounded-md w-full">
+            <Card className="border-border shadow-sm animate-in fade-in rounded-xl w-full">
               <CardHeader className="pb-1 pt-4">
                 <CardTitle className="text-base">Access Clip</CardTitle>
                 <CardDescription className="text-xs">Enter the 6-character code to open shared content.</CardDescription>
@@ -538,7 +538,7 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="history" className="mt-0">
-            <Card className="border-border shadow-sm animate-in fade-in rounded-none sm:rounded-md w-full">
+            <Card className="border-border shadow-sm animate-in fade-in rounded-xl w-full">
               <CardHeader className="pb-2 pt-4">
                 <CardTitle className="text-base flex items-center gap-2">
                   <History className="w-4 h-4" /> Recent Clips
@@ -550,25 +550,27 @@ export default function Home() {
                   <p className="text-sm text-muted-foreground text-center py-6">No clips created yet on this device.</p>
                 ) : (
                   history.map((item) => (
-                    <div key={item.code} className="flex items-center gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5">
+                    <div key={item.code} className="flex items-center gap-2 sm:gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5">
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => router.push(`/clip/${item.code}`)}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-sm tracking-widest text-primary">{item.code}</span>
-                          <span className="text-[11px] text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-mono font-bold text-sm tracking-widest text-primary shrink-0">{item.code}</span>
+                          <span className="text-[11px] text-muted-foreground break-all">
                             {new Date(item.createdAt).toLocaleString('en-US')}
                           </span>
                         </div>
-                        {item.textSnippet && <p className="text-xs text-muted-foreground truncate mt-0.5">{item.textSnippet}</p>}
+                        {item.textSnippet && <p className="text-xs text-muted-foreground truncate mt-0.5 pr-1">{item.textSnippet}</p>}
                         {item.fileCount > 0 && (
                           <p className="text-[11px] text-muted-foreground mt-0.5">{item.fileCount} file(s)</p>
                         )}
                       </div>
-                      <Button variant="ghost" size="icon-sm" onClick={() => copyToClipboard(item.code)} title="Copy code">
-                        <Copy className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon-sm" onClick={() => removeFromHistory(item.code)} title="Remove from history" className="text-destructive hover:text-destructive">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" onClick={() => copyToClipboard(item.code)} title="Copy code" className="h-8 w-8">
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => removeFromHistory(item.code)} title="Remove from history" className="text-destructive hover:text-destructive h-8 w-8">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}

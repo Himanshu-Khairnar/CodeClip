@@ -329,23 +329,23 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     }
 
     return (
-        <div className="flex-1 bg-background flex flex-col items-center justify-center p-4 py-10">
+        <div className="flex-1 bg-background flex flex-col items-center justify-center px-3 py-6 sm:p-4 sm:py-10">
             <div className="w-full max-w-3xl lg:max-w-4xl">
-                <div className="mb-6 flex items-center justify-between">
-                    <Button variant="ghost" asChild>
+                <div className="mb-4 sm:mb-6 flex items-center justify-between">
+                    <Button variant="ghost" size="sm" asChild className="h-9">
                         <Link href="/"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Link>
                     </Button>
                 </div>
 
-                <div className="text-center mb-8 animate-in fade-in slide-in-from-top-4">
-                    <div className="flex items-center justify-center gap-3 mb-2">
-                        <div className="w-10 h-10 bg-primary text-primary-foreground flex items-center justify-center rounded-xl font-bold text-2xl shadow-sm shrink-0">
+                <div className="text-center mb-6 sm:mb-8 animate-in fade-in slide-in-from-top-4 px-2">
+                    <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-primary text-primary-foreground flex items-center justify-center rounded-xl font-bold text-xl sm:text-2xl shadow-sm shrink-0">
                             C
                         </div>
-                        <h1 className="text-3xl font-extrabold tracking-tight">Clip Access</h1>
+                        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Clip Access</h1>
                     </div>
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-4 py-1.5">
-                        <span className="font-mono text-lg font-bold tracking-[0.3em] text-primary">{code}</span>
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 sm:px-4 py-1.5 max-w-full">
+                        <span className="font-mono text-base sm:text-lg font-bold tracking-[0.2em] sm:tracking-[0.3em] text-primary truncate">{code}</span>
                         <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => { navigator.clipboard.writeText(code); toast.success("Code copied to clipboard!"); }} title="Copy code">
                             <Copy className="w-3.5 h-3.5 text-primary" />
                         </Button>
@@ -353,17 +353,17 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                 </div>
 
                 {data ? (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                    <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[11px] sm:text-xs text-muted-foreground text-center">
                             {data.createdAt && (
                                 <span className="flex items-center gap-1.5">
-                                    <CalendarDays className="w-3.5 h-3.5" />
+                                    <CalendarDays className="w-3.5 h-3.5 shrink-0" />
                                     Created {format(new Date(data.createdAt), "MMM d, yyyy 'at' h:mm a")}
                                 </span>
                             )}
                             {data.expiresAt && timeLeft && (
                                 <span className={`flex items-center gap-1.5 font-mono ${timeLeft.h === 0 && timeLeft.m < 10 ? "text-destructive font-semibold" : ""}`}>
-                                    <Clock className="w-3.5 h-3.5" />
+                                    <Clock className="w-3.5 h-3.5 shrink-0" />
                                     Expires in {timeLeft.h}h {timeLeft.m}m {timeLeft.s}s
                                 </span>
                             )}
@@ -384,21 +384,21 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                         )}
 
                         {/* Share buttons */}
-                        <div className="flex justify-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground mr-1">
+                        <div className="flex flex-wrap justify-center items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground mr-1 w-full sm:w-auto justify-center sm:justify-start mb-1 sm:mb-0">
                                 <Share2 className="w-3.5 h-3.5" /> Share:
                             </span>
-                            <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                            <Button variant="outline" size="sm" className="h-8 text-xs flex-1 sm:flex-none min-w-[90px]" asChild>
                                 <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer">
                                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                                 </a>
                             </Button>
-                            <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                            <Button variant="outline" size="sm" className="h-8 text-xs flex-1 sm:flex-none min-w-[90px]" asChild>
                                 <a href={`https://t.me/share/url?url=${encodeURIComponent(clipUrl)}&text=${encodeURIComponent("Check out my CodeClip")}`} target="_blank" rel="noopener noreferrer">
                                     <Send className="w-3.5 h-3.5" /> Telegram
                                 </a>
                             </Button>
-                            <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                            <Button variant="outline" size="sm" className="h-8 text-xs flex-1 sm:flex-none min-w-[70px]" asChild>
                                 <a href={`mailto:?subject=${encodeURIComponent("CodeClip")}&body=${encodeURIComponent(shareText)}`}>
                                     <Mail className="w-3.5 h-3.5" /> Email
                                 </a>
@@ -406,24 +406,24 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                         </div>
 
                         {data.text && (
-                            <Card className="border-border shadow-sm rounded-none sm:rounded-md">
-                                <CardHeader className="pb-3 border-b bg-muted/30">
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Card className="border-border shadow-sm rounded-xl overflow-hidden">
+                                <CardHeader className="pb-3 border-b bg-muted/30 px-4 sm:px-6">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <CardTitle className="text-base sm:text-lg flex items-center gap-2">
                                             Text Content
                                         </CardTitle>
-                                        <div className="flex gap-2">
-                                            <Button variant="ghost" size="sm" onClick={downloadTextAsFile} className="h-8">
-                                                <Download className="w-4 h-4 mr-2" /> .txt
+                                        <div className="flex gap-2 self-stretch sm:self-auto">
+                                            <Button variant="ghost" size="sm" onClick={downloadTextAsFile} className="h-8 flex-1 sm:flex-none text-xs sm:text-sm">
+                                                <Download className="w-4 h-4 mr-1 sm:mr-2" /> .txt
                                             </Button>
-                                            <Button variant="ghost" size="sm" onClick={copyText} className="h-8">
-                                                <Copy className="w-4 h-4 mr-2" /> Copy
+                                            <Button variant="ghost" size="sm" onClick={copyText} className="h-8 flex-1 sm:flex-none text-xs sm:text-sm">
+                                                <Copy className="w-4 h-4 mr-1 sm:mr-2" /> Copy
                                             </Button>
                                         </div>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="pt-4">
-                                    <pre className="whitespace-pre-wrap font-mono bg-muted/20 p-4 rounded-md min-h-[100px] border border-muted/50 text-sm md:text-base selection:bg-primary/20">
+                                <CardContent className="pt-4 px-4 sm:px-6">
+                                    <pre className="whitespace-pre-wrap break-words font-mono bg-muted/20 p-3 sm:p-4 rounded-md min-h-[100px] border border-muted/50 text-sm sm:text-base selection:bg-primary/20 overflow-x-auto max-w-full">
                                         {data.text}
                                     </pre>
                                 </CardContent>
@@ -431,17 +431,17 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                         )}
 
                         {data.files && data.files.length > 0 && (
-                            <Card className="border-border shadow-sm rounded-none sm:rounded-md">
-                                <CardHeader className="pb-3 border-b bg-muted/30">
-                                    <div className="flex flex-row items-center justify-between gap-4">
-                                        <CardTitle className="text-lg">Attached Files ({data.files.length})</CardTitle>
+                            <Card className="border-border shadow-sm rounded-xl overflow-hidden">
+                                <CardHeader className="pb-3 border-b bg-muted/30 px-4 sm:px-6">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <CardTitle className="text-base sm:text-lg">Attached Files ({data.files.length})</CardTitle>
                                         {data.files.length > 1 && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
                                                 onClick={handleDownloadZip}
                                                 disabled={downloadingAll}
-                                                className="h-8 shrink-0 text-xs"
+                                                className="h-9 sm:h-8 shrink-0 text-xs w-full sm:w-auto"
                                             >
                                                 {downloadingAll ? (
                                                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
@@ -453,7 +453,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                         )}
                                     </div>
                                 </CardHeader>
-                                <CardContent className="pt-4">
+                                <CardContent className="pt-4 px-3 sm:px-6">
                                     <div className="space-y-3">
                                         {data.files.map((file: ClipFile, index: number) => {
                                             const ext = file.filename.split('.').pop()?.toLowerCase() || '';
@@ -464,27 +464,29 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
                                             return (
                                                 <div key={index} className="rounded-lg border border-border bg-card overflow-hidden transition-colors hover:bg-muted/30">
-                                                    <div className="flex items-center gap-3 p-3.5">
-                                                        <div className="w-11 h-11 shrink-0 rounded-md bg-primary/10 flex items-center justify-center">
-                                                            {getFileIcon(file.filename, file.resourceType)}
-                                                        </div>
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-3.5">
+                                                        <div className="flex items-center gap-3 flex-1 min-w-0 w-full">
+                                                            <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-md bg-primary/10 flex items-center justify-center">
+                                                                {getFileIcon(file.filename, file.resourceType)}
+                                                            </div>
 
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="font-medium text-sm truncate" title={file.filename}>{file.filename}</p>
-                                                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                                                                <span>{formatSize(file.size)}</span>
-                                                                <span className="w-1 h-1 rounded-full bg-muted-foreground/50" />
-                                                                <span className="uppercase font-medium">{ext || "FILE"}</span>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-medium text-sm truncate pr-2" title={file.filename}>{file.filename}</p>
+                                                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 flex-wrap">
+                                                                    <span>{formatSize(file.size)}</span>
+                                                                    <span className="w-1 h-1 rounded-full bg-muted-foreground/50 hidden sm:block" />
+                                                                    <span className="uppercase font-medium truncate">{ext || "FILE"}</span>
+                                                                </div>
                                                             </div>
                                                         </div>
 
-                                                        <div className="flex items-center gap-2 shrink-0">
+                                                        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                                                             {isPreviewable(file.filename, file.resourceType) && (
                                                                 <Button
                                                                     variant="outline"
                                                                     size="sm"
                                                                     onClick={() => setPreviewFileIndex(isPreviewing ? null : index)}
-                                                                    className="h-8 px-3 text-xs"
+                                                                    className="h-9 sm:h-8 px-3 text-xs flex-1 sm:flex-none"
                                                                 >
                                                                     {isPreviewing ? <EyeOff className="w-3.5 h-3.5 mr-1.5" /> : <Eye className="w-3.5 h-3.5 mr-1.5" />}
                                                                     {isPreviewing ? "Hide" : "Preview"}
@@ -495,14 +497,15 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                 size="sm"
                                                                 onClick={() => downloadSingleFile(file.path, file.filename)}
                                                                 disabled={!!downloadingMap[file.filename]}
-                                                                className="h-8 px-3 text-xs"
+                                                                className="h-9 sm:h-8 px-3 text-xs flex-1 sm:flex-none"
                                                             >
                                                                 {downloadingMap[file.filename] ? (
                                                                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                                                                 ) : (
                                                                     <Download className="w-3.5 h-3.5 mr-1.5" />
                                                                 )}
-                                                                {downloadingMap[file.filename] ? "Downloading..." : "Download"}
+                                                                <span className="hidden sm:inline">{downloadingMap[file.filename] ? "Downloading..." : "Download"}</span>
+                                                                <span className="sm:hidden">Download</span>
                                                             </Button>
                                                         </div>
                                                     </div>

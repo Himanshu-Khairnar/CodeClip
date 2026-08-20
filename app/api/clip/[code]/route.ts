@@ -6,6 +6,8 @@ import { decryptText, hashCode } from "@/lib/encryption";
 import { deleteFromCloudinary } from "@/lib/cloudinary";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
+export const dynamic = "force-dynamic";
+
 const PASSWORD_PEPPER = process.env.ENCRYPTION_KEY || "";
 
 function hashPassword(password: string, salt: string): string {

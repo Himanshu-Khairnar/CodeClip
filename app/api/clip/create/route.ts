@@ -7,6 +7,7 @@ import { uploadToCloudinary } from "@/lib/cloudinary";
 import { generateCode } from "@/lib/codes";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const MAX_TOTAL_SIZE = 30 * 1024 * 1024;

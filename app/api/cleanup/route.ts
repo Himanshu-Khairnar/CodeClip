@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { deleteFromCloudinary } from "@/lib/cloudinary";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 async function dropLegacyTtlIndex() {

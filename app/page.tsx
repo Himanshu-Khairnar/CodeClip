@@ -367,7 +367,7 @@ export default function Home() {
                       maxLength={MAX_TEXT_LENGTH}
                       onChange={(e) => setText(e.target.value)}
                     />
-                    <p className="text-[11px] text-muted-foreground text-right">{text.length.toLocaleString()} / {MAX_TEXT_LENGTH.toLocaleString()} chars</p>
+                    <p className="text-[11px] text-muted-foreground text-right">{text.length.toLocaleString('en-US')} / {MAX_TEXT_LENGTH.toLocaleString('en-US')} chars</p>
                   </div>
 
                   <div className="space-y-2">
@@ -555,7 +555,7 @@ export default function Home() {
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-sm tracking-widest text-primary">{item.code}</span>
                           <span className="text-[11px] text-muted-foreground">
-                            {new Date(item.createdAt).toLocaleString()}
+                            {new Date(item.createdAt).toLocaleString('en-US')}
                           </span>
                         </div>
                         {item.textSnippet && <p className="text-xs text-muted-foreground truncate mt-0.5">{item.textSnippet}</p>}

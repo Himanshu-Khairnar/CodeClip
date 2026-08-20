@@ -7,6 +7,7 @@ import Clip from "@/models/Clip";
 import { hashCode } from "@/lib/encryption";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const PASSWORD_PEPPER = process.env.ENCRYPTION_KEY || "";

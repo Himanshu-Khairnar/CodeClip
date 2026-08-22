@@ -43,9 +43,13 @@ export async function GET(req: NextRequest) {
   await dropLegacyTtlIndex();
 
   const now = new Date();
+  const maxAge = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const expiredClips = await Clip.find({
-    expiresAt: { $lt: now },
+    $or: [
+      { expiresAt: { $lt: now } },
+      { createdAt: { $lt: maxAge } },
+    ],
   }).lean();
 
   if (expiredClips.length === 0) {

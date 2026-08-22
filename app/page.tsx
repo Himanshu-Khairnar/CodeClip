@@ -22,7 +22,6 @@ const MAX_TOTAL_SIZE = 30 * 1024 * 1024;
 const EXPIRY_OPTIONS = [
   { value: "1", label: "1 hour" },
   { value: "24", label: "24 hours" },
-  { value: "168", label: "7 days" },
 ];
 
 interface HistoryItem {
@@ -493,7 +492,7 @@ export default function Home() {
                     <Label className="text-sm flex items-center gap-1.5">
                       <Clock className="w-4 h-4 text-muted-foreground" /> Expires in
                     </Label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {EXPIRY_OPTIONS.map((opt) => (
                         <button
                           key={opt.value}

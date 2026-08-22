@@ -12,7 +12,7 @@ export const maxDuration = 60;
 
 const MAX_TOTAL_SIZE = 30 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 500_000; // ~500KB
-const VALID_EXPIRY_HOURS = new Set([1, 24, 168]);
+const VALID_EXPIRY_HOURS = new Set([1, 24]);
 
 const PASSWORD_PEPPER = process.env.ENCRYPTION_KEY || "";
 

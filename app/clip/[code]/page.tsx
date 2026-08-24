@@ -14,8 +14,6 @@ import Link from "next/link";
 import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
-import "highlight.js/styles/github-dark.css";
 
 interface ClipFile {
     filename: string;
@@ -459,8 +457,8 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                             {data.text}
                                         </pre>
                                     ) : (
-                                        <div className="markdown-preview min-h-[100px] border border-muted/50 rounded-md bg-muted/20 p-3 sm:p-4 overflow-x-auto max-w-full text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:mb-2 [&_p]:leading-7 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-1 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[13px] [&_pre]:bg-[#0d1117] [&_pre]:text-[#e6edf3] [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_hr]:my-4 [&_hr]:border-border">
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{data.text || ""}</ReactMarkdown>
+                                        <div className="markdown-preview min-h-[100px] border border-muted/50 rounded-md bg-muted/20 p-3 sm:p-4 overflow-x-auto max-w-full text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:mb-2 [&_p]:leading-7 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-1 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_code]:bg-transparent [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[13px] [&_code]:font-mono [&_pre]:bg-transparent [&_pre]:border [&_pre]:border-border [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_hr]:my-4 [&_hr]:border-border">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.text || ""}</ReactMarkdown>
                                         </div>
                                     )}
                                 </CardContent>
@@ -585,7 +583,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                 <iframe src={file.path} title={file.filename} className="w-full h-[60vh] sm:h-[500px] rounded-md border border-border bg-white" />
                                                             )}
                                                             {isTextPreview(file.filename) && (
-                                                                <div className="w-full max-h-80 overflow-auto bg-[#0d1117] text-[#e6edf3] p-3 rounded-md border border-border font-mono text-xs sm:text-sm whitespace-pre-wrap break-words">
+                                                                <div className="w-full max-h-80 overflow-auto bg-muted/30 p-3 rounded-md border border-border font-mono text-xs sm:text-sm whitespace-pre-wrap break-words">
                                                                     {textFilePreviews[file.filename] === undefined ? "Loading preview..." : textFilePreviews[file.filename] || "Empty file"}
                                                                 </div>
                                                             )}

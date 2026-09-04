@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { encryptText, hashCode } from "@/lib/encryption";
+import { hashClipPassword } from "@/lib/clip-auth";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { generateCode } from "@/lib/codes";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
@@ -13,14 +14,6 @@ export const maxDuration = 60;
 const MAX_TOTAL_SIZE = 30 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 500_000; // ~500KB
 const VALID_EXPIRY_HOURS = new Set([1, 24]);
-
-const PASSWORD_PEPPER = process.env.ENCRYPTION_KEY || "";
-
-function hashPassword(password: string, salt: string): string {
-  return createHash("sha256")
-    .update(password + salt + PASSWORD_PEPPER)
-    .digest("hex");
-}
 
 export async function POST(req: Request) {
   try {
@@ -123,7 +116,7 @@ export async function POST(req: Request) {
     const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
     const salt = password ? randomBytes(16).toString("hex") : undefined;
-    const passwordHash = password && salt ? hashPassword(password, salt) : undefined;
+    const passwordHash = password && salt ? hashClipPassword(password, salt) : undefined;
 
     await Clip.create({
       code: hashCode(code),

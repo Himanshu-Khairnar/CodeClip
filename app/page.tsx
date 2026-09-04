@@ -10,9 +10,10 @@ import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
   UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info, Clock, Lock, History, Trash2,
-  FileText, FileCode, FileArchive, Image as ImageIcon, Video, Music, File
+  FileArchive,
 } from "lucide-react";
-import QRCode from "qrcode";
+import { FileIcon } from "@/components/file-icon";
+import { formatBytes } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -216,6 +217,8 @@ export default function Home() {
         setCode(generatedCode);
 
         const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
+        // Lazy-load the QR generator so it isn't part of the initial bundle.
+        const { default: QRCode } = await import("qrcode");
         const qrDataUrl = await QRCode.toDataURL(clipUrl, { width: 250, margin: 2 });
         setQrCodeUrl(qrDataUrl);
 
@@ -280,16 +283,7 @@ export default function Home() {
 
   const clipUrl = code ? `${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}` : "";
 
-  const getFileIcon = (name: string) => {
-    const ext = name.split(".").pop()?.toLowerCase() || "";
-    if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext)) return <ImageIcon className="w-4 h-4 text-primary shrink-0" />;
-    if (["mp4", "webm", "mov", "avi"].includes(ext)) return <Video className="w-4 h-4 text-primary shrink-0" />;
-    if (["mp3", "wav", "ogg", "m4a"].includes(ext)) return <Music className="w-4 h-4 text-primary shrink-0" />;
-    if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return <FileArchive className="w-4 h-4 text-primary shrink-0" />;
-    if (["js", "jsx", "ts", "tsx", "html", "css", "json", "py", "java", "cpp", "c", "cs", "php", "rb", "go", "rs", "sh", "sql", "yaml"].includes(ext)) return <FileCode className="w-4 h-4 text-primary shrink-0" />;
-    if (["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "csv", "md"].includes(ext)) return <FileText className="w-4 h-4 text-primary shrink-0" />;
-    return <File className="w-4 h-4 text-muted-foreground shrink-0" />;
-  };
+  const getFileIcon = (name: string) => <FileIcon filename={name} />;
 
   return (
     <div className="flex-1 flex flex-col items-center justify-start sm:justify-center px-3 py-4 sm:p-4 pb-6 sm:pb-4">
@@ -418,7 +412,7 @@ export default function Home() {
                         ) : (
                           <>
                             <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2 shrink-0 gap-2">
-                              <span className="text-xs font-medium text-muted-foreground truncate">Selected Files ({files.length}) · {(files.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(2)} MB</span>
+                              <span className="text-xs font-medium text-muted-foreground truncate">Selected Files ({files.length}) · {formatBytes(files.reduce((s, f) => s + f.size, 0))}</span>
                               <div className="flex gap-1 shrink-0">
                                 <Button
                                   type="button"
@@ -442,9 +436,7 @@ export default function Home() {
                             </div>
                             <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
                               {files.map((file, i) => {
-                                const formattedSize = file.size > 1024 * 1024
-                                  ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
-                                  : `${(file.size / 1024).toFixed(1)} KB`;
+                                const formattedSize = formatBytes(file.size);
 
                                 return (
                                   <div key={i} className="flex items-center justify-between bg-muted/40 px-2.5 py-1.5 rounded-md text-sm border border-border">

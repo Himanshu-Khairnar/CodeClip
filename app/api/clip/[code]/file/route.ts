@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { hashCode } from "@/lib/encryption";
+import { hasValidClipPassword, isClipExpired } from "@/lib/clip-auth";
 import { deleteFromCloudinary } from "@/lib/cloudinary";
 
 export const dynamic = "force-dynamic";
-
-const PASSWORD_PEPPER = process.env.ENCRYPTION_KEY || "";
-
-function hashPassword(password: string, salt: string): string {
-  return createHash("sha256").update(password + salt + PASSWORD_PEPPER).digest("hex");
-}
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   try {
@@ -23,15 +17,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
     const clip = await Clip.findOne({ code: hashCode(code) });
     if (!clip) return NextResponse.json({ message: "Clip not found" }, { status: 404 });
 
-    if (new Date() > new Date(clip.expiresAt)) {
+    if (isClipExpired(clip.expiresAt)) {
       return NextResponse.json({ message: "Clip has expired" }, { status: 410 });
     }
 
-    if (clip.passwordHash && clip.salt) {
-      const provided = req.headers.get("x-clip-password") || "";
-      if (hashPassword(provided, clip.salt) !== clip.passwordHash) {
-        return NextResponse.json({ message: "This clip is password protected" }, { status: 401 });
-      }
+    if (!hasValidClipPassword(clip, req.headers.get("x-clip-password") || "")) {
+      return NextResponse.json({ message: "This clip is password protected" }, { status: 401 });
     }
 
     const file = clip.files.find((f: { key: string }) => f.key === key);

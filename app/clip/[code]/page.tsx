@@ -6,14 +6,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  Download, Copy, AlertTriangle, ArrowLeft, Lock, FileArchive,
-  FileText, FileCode, Image as ImageIcon, Video, Music, File, Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2
+  Download, Copy, AlertTriangle, ArrowLeft, Lock, FileArchive, FileCode,
+  Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2
 } from "lucide-react";
+import { FileIcon } from "@/components/file-icon";
+import { formatBytes } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { format } from "date-fns";
-import ReactMarkdown from "react-markdown";
+import dynamic from "next/dynamic";
 import remarkGfm from "remark-gfm";
+
+// Split the markdown renderer out of the initial viewer bundle —
+// it's only needed when a clip actually contains text.
+const ReactMarkdown = dynamic(() => import("react-markdown"), {
+  ssr: false,
+  loading: () => <p className="text-sm text-muted-foreground py-4">Loading preview…</p>,
+});
 
 interface ClipFile {
     filename: string;
@@ -256,36 +265,11 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         }
     };
 
-    const getFileIcon = (filename: string, resourceType?: string) => {
-        const ext = filename.split('.').pop()?.toLowerCase() || '';
-        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext) || resourceType === 'image') {
-            return <ImageIcon className="w-5 h-5 text-primary shrink-0" />;
-        }
-        if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext) || resourceType === 'video') {
-            return <Video className="w-5 h-5 text-primary shrink-0" />;
-        }
-        if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) {
-            return <Music className="w-5 h-5 text-primary shrink-0" />;
-        }
-        if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'].includes(ext)) {
-            return <FileArchive className="w-5 h-5 text-primary shrink-0" />;
-        }
-        if (['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'sql', 'xml', 'yaml', 'yml'].includes(ext)) {
-            return <FileCode className="w-5 h-5 text-primary shrink-0" />;
-        }
-        if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
-            return <FileText className="w-5 h-5 text-primary shrink-0" />;
-        }
-        return <File className="w-5 h-5 text-muted-foreground shrink-0" />;
-    };
+    const getFileIcon = (filename: string, resourceType?: string) => (
+      <FileIcon filename={filename} resourceType={resourceType} className="w-5 h-5 text-primary shrink-0" />
+    );
 
-    const formatSize = (bytes: number) => {
-        if (bytes === 0) return "0 B";
-        const k = 1024;
-        const sizes = ["B", "KB", "MB", "GB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-    };
+    const formatSize = formatBytes;
 
     const isPreviewable = (filename: string, resourceType?: string) => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';

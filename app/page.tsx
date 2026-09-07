@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { formatBytes } from "@/lib/format";
+import { compressImage, isCompressibleImage, COMPRESS_SKIP_UNDER } from "@/lib/compress";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -65,6 +66,7 @@ export default function Home() {
 
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState("");
 
   const [code, setCode] = useState("");
   const [accessCode, setAccessCode] = useState("");
@@ -171,7 +173,94 @@ export default function Home() {
     setFiles(files.filter((_, i) => i !== index));
   };
 
-  const handleUpload = () => {
+  /** Upload bytes straight to Cloudinary (bypasses Vercel's ~4.5MB limit). */
+  const uploadFileDirect = (
+    uploadUrl: string,
+    fields: Record<string, string>,
+    file: File,
+    onProgress: (fraction: number) => void
+  ): Promise<{ secure_url: string; public_id: string; resource_type: string }> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", uploadUrl);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300 && data?.secure_url) {
+            resolve(data);
+          } else {
+            reject(new Error(data?.error?.message || "File upload failed."));
+          }
+        } catch {
+          reject(new Error("File upload failed."));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload."));
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+      fd.append("file", file);
+      xhr.send(fd);
+    });
+  };
+
+  /** Legacy path: small payloads proxied through our own API. */
+  const createViaServer = (formData: FormData): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/clip/create");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
+        }
+      };
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300 && data?.code) {
+            resolve(data.code as string);
+          } else {
+            reject(new Error(typeof data?.message === "string" ? data.message : "Something went wrong during upload."));
+          }
+        } catch {
+          const t = xhr.responseText || "";
+          if (t.toLowerCase().includes("too large") || t.toLowerCase().includes("entity")) {
+            reject(new Error("File too large for server upload. Please try again — large files upload directly."));
+          } else {
+            reject(new Error("Something went wrong during upload."));
+          }
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload."));
+      xhr.send(formData);
+    });
+  };
+
+  const finishCreate = async (generatedCode: string) => {
+    setProgress(100);
+    setCode(generatedCode);
+
+    const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
+    // Lazy-load the QR generator so it isn't part of the initial bundle.
+    const { default: QRCode } = await import("qrcode");
+    const qrDataUrl = await QRCode.toDataURL(clipUrl, { width: 250, margin: 2 });
+    setQrCodeUrl(qrDataUrl);
+
+    saveHistoryItem({
+      code: generatedCode,
+      url: clipUrl,
+      textSnippet: text.trim().slice(0, 80),
+      fileCount: files.length,
+      createdAt: Date.now(),
+    });
+    setHistory(loadHistory());
+
+    toast.success("Clipboard created successfully!");
+  };
+
+  const handleUpload = async () => {
     if (!text.trim() && files.length === 0) {
       toast.error("Please add some text or files to upload.");
       return;
@@ -180,75 +269,118 @@ export default function Home() {
     setUploading(true);
     setProgress(0);
 
-    const formData = new FormData();
-    formData.append("text", text);
-    formData.append("isOneTimeView", String(isOneTimeView));
-    formData.append("expiry", expiry);
-    if (password.trim()) formData.append("password", password);
-
-    for (const file of files) {
-      formData.append("files", file);
-    }
-
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/clip/create");
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        setProgress(Math.min(99, Math.round((e.loaded / e.total) * 100)));
+    try {
+      // Phase 1 — compress large images in the browser (0–15%).
+      setUploadStatus(files.length > 0 ? "Compressing images…" : "Creating clip…");
+      const prepared: File[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        if (isCompressibleImage(f.name) && f.size > COMPRESS_SKIP_UNDER) {
+          prepared.push(await compressImage(f));
+        } else {
+          prepared.push(f);
+        }
+        if (files.length > 0) {
+          setProgress(Math.round(((i + 1) / files.length) * 15));
+        }
       }
-    };
 
-    xhr.onload = async () => {
-      let message = "Something went wrong during upload.";
+      // Phase 2 — upload each file straight to Cloudinary (15–90%).
+      // Bytes never pass through our Vercel function, so the ~4.5MB
+      // serverless body limit doesn't apply.
+      const uploaded: {
+        filename: string;
+        path: string;
+        size: number;
+        key: string;
+        resourceType: string;
+      }[] = [];
+
+      for (let i = 0; i < prepared.length; i++) {
+        const f = prepared[i];
+        setUploadStatus(`Uploading file ${i + 1} of ${prepared.length}…`);
+
+        const signRes = await fetch("/api/clip/sign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: f.name }),
+        });
+        if (!signRes.ok) {
+          throw new Error("Could not prepare upload. Please try again.");
+        }
+        const sign = await signRes.json();
+
+        try {
+          const result = await uploadFileDirect(
+            sign.uploadUrl,
+            {
+              api_key: sign.apiKey,
+              timestamp: String(sign.timestamp),
+              signature: sign.signature,
+              folder: sign.folder,
+              public_id: sign.publicId,
+            },
+            f,
+            (frac) => {
+              const base = 15 + (i / prepared.length) * 75;
+              setProgress(Math.min(90, Math.round(base + frac * (75 / prepared.length))));
+            }
+          );
+          uploaded.push({
+            filename: f.name,
+            path: result.secure_url,
+            size: f.size,
+            key: result.public_id,
+            resourceType: result.resource_type || sign.resourceType,
+          });
+        } catch (directErr) {
+          // Fallback: tiny total payloads can still go through our own API.
+          const totalSize = prepared.reduce((s, x) => s + x.size, 0);
+          if (totalSize > 4 * 1024 * 1024 || prepared.length > 1) throw directErr;
+          setUploadStatus("Retrying via server…");
+          const formData = new FormData();
+          formData.append("text", text);
+          formData.append("isOneTimeView", String(isOneTimeView));
+          formData.append("expiry", expiry);
+          if (password.trim()) formData.append("password", password);
+          for (const file of prepared) formData.append("files", file);
+          const code = await createViaServer(formData);
+          await finishCreate(code);
+          return;
+        }
+      }
+
+      // Phase 3 — create the clip record (small JSON, no file bytes).
+      setUploadStatus("Creating clip…");
+      setProgress(92);
+      const res = await fetch("/api/clip/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          isOneTimeView,
+          expiry,
+          password: password.trim(),
+          files: uploaded,
+        }),
+      });
       let data: { code?: string; message?: string } | null = null;
       try {
-        data = JSON.parse(xhr.responseText);
+        data = await res.json();
       } catch {
-        const t = xhr.responseText;
-        if (t.toLowerCase().includes("too large") || t.toLowerCase().includes("entity")) {
-          message = "File too large. Vercel limits uploads to 4.5MB on the free plan.";
-        }
+        // non-JSON response
       }
-
-      if (xhr.status >= 200 && xhr.status < 300 && data?.code) {
-        setProgress(100);
-        const generatedCode = data.code;
-        setCode(generatedCode);
-
-        const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
-        // Lazy-load the QR generator so it isn't part of the initial bundle.
-        const { default: QRCode } = await import("qrcode");
-        const qrDataUrl = await QRCode.toDataURL(clipUrl, { width: 250, margin: 2 });
-        setQrCodeUrl(qrDataUrl);
-
-        saveHistoryItem({
-          code: generatedCode,
-          url: clipUrl,
-          textSnippet: text.trim().slice(0, 80),
-          fileCount: files.length,
-          createdAt: Date.now(),
-        });
-        setHistory(loadHistory());
-
-        toast.success("Clipboard created successfully!");
-      } else {
-        if (data && "message" in data && typeof data.message === "string") {
-          message = data.message;
-        }
-        toast.error(message);
+      if (!res.ok || !data?.code) {
+        throw new Error(data?.message || "Something went wrong during upload.");
       }
+      await finishCreate(data.code);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong during upload.");
+    } finally {
       setUploading(false);
       setProgress(0);
-    };
-
-    xhr.onerror = () => {
-      toast.error("Network error during upload.");
-      setUploading(false);
-      setProgress(0);
-    };
-
-    xhr.send(formData);
+      setUploadStatus("");
+    }
   };
 
   const copyToClipboard = (textToCopy: string) => {
@@ -370,7 +502,7 @@ export default function Home() {
               <Card className="border-border shadow-md animate-in fade-in slide-in-from-bottom-4 rounded-xl">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-xl">Send File</CardTitle>
-                  <CardDescription className="text-sm">Paste text or upload files (up to 30MB total).</CardDescription>
+                  <CardDescription className="text-sm">Paste text or upload files (up to 30MB total). Images over 1.5MB are compressed automatically.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -399,7 +531,7 @@ export default function Home() {
                           <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-4 text-center">
                             <UploadCloud className="w-8 h-8 text-muted-foreground" />
                             <p className="font-medium text-sm">Click or drag files &amp; folders here</p>
-                            <p className="text-xs text-muted-foreground">Any file type up to 30MB</p>
+                            <p className="text-xs text-muted-foreground">Any file type up to 30MB · photos auto-compress</p>
                             <div className="flex gap-2 mt-2">
                               <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
                                 <Plus className="w-3 h-3 mr-1" /> Files
@@ -537,7 +669,7 @@ export default function Home() {
                   {uploading && (
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-sm">
-                        <span>Uploading...</span>
+                        <span>{uploadStatus || "Uploading..."}</span>
                         <span>{progress}%</span>
                       </div>
                       <Progress value={progress} className="h-2" />

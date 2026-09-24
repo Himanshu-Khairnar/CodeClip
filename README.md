@@ -1,11 +1,10 @@
 # CodeClip — Secure Online Clipboard
 
-A fast, secure temporary clipboard for sharing text and files. Create a clip, share the 6-character code or QR, and it's gone when the time's up.
+A fast, secure temporary clipboard for sharing text and files. Create a clip, share the 4-digit code or QR, and it's gone when the time's up.
 
 ## Features
 
-- **Text & File Sharing** — paste text or upload any file type (up to 30MB total)
-- **Password Protection** — optionally lock a clip behind a password
+- **Text & File Sharing** — paste text or upload any file type (up to 100MB total)
 - **One-Time View** — clip auto-deletes after the first access
 - **QR Code** — scan to open the clip on any device
 - **AES Encryption** — text content is encrypted before being stored
@@ -77,7 +76,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | `/api/clip/create` | POST | Create a new clip (text + files) |
 | `/api/clip/[code]` | GET | Fetch a clip by its code |
 | `/api/clip/[code]` | DELETE | Delete a clip and its files |
-| `/api/clip/[code]/verify` | POST | Verify password for a protected clip |
 | `/api/cleanup` | GET | Delete all clips older than 2 minutes (cron) |
 
 ## Deployment (Vercel)
@@ -98,7 +96,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ├── app/
 │   ├── api/
 │   │   ├── cleanup/        # Cron cleanup endpoint
-│   │   └── clip/           # Clip CRUD + password verify
+│   │   └── clip/           # Clip CRUD + direct Cloudinary signing
 │   ├── clip/[code]/        # Clip viewer page
 │   └── page.tsx            # Home (create + access tabs)
 ├── components/

@@ -3,10 +3,9 @@
 import { useState, useEffect, use, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
-  Download, Copy, AlertTriangle, ArrowLeft, Lock, FileArchive, FileCode,
+  Download, Copy, AlertTriangle, ArrowLeft, FileArchive, FileCode,
   Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
@@ -51,10 +50,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    const [needsPassword, setNeedsPassword] = useState(false);
-    const [password, setPassword] = useState("");
-    const [passwordChecking, setPasswordChecking] = useState(false);
-
     const [downloadingMap, setDownloadingMap] = useState<Record<string, boolean>>({});
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [previewFileIndex, setPreviewFileIndex] = useState<number | null>(null);
@@ -64,21 +59,12 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [timeLeft, setTimeLeft] = useState<{ h: number; m: number; s: number } | null>(null);
     const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
-    const fetchClip = useCallback(async (pwd?: string) => {
+    const fetchClip = useCallback(async () => {
         try {
             setLoading(true);
-            const headers: Record<string, string> = {};
-            if (pwd) headers["x-clip-password"] = pwd;
 
-            const res = await fetch(`/api/clip/${code}`, { headers });
+            const res = await fetch(`/api/clip/${code}`);
             const resData = await res.json();
-
-            if (res.status === 401) {
-                setNeedsPassword(true);
-                setError("");
-                setLoading(false);
-                return;
-            }
 
             if (!res.ok) {
                 setError(resData.message || "Clip not found or expired.");
@@ -86,7 +72,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                 return;
             }
 
-            setNeedsPassword(false);
             setData(resData);
             setLoading(false);
         } catch (err) {
@@ -150,13 +135,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         });
     }, [previewFileIndex, data?.files, textFilePreviews]);
 
-    const handlePasswordSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!password.trim()) return;
-        setPasswordChecking(true);
-        fetchClip(password).finally(() => setPasswordChecking(false));
-    };
-
     const copyText = () => {
         if (data?.text) {
             navigator.clipboard.writeText(data.text);
@@ -218,9 +196,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         if (!confirm(`Delete "${filename}" permanently?`)) return;
         setDeletingFile(filename);
         try {
-            const headers: Record<string, string> = {};
-            if (password) headers["x-clip-password"] = password;
-            const res = await fetch(`/api/clip/${code}/file?key=${encodeURIComponent(key)}`, { method: "DELETE", headers });
+            const res = await fetch(`/api/clip/${code}/file?key=${encodeURIComponent(key)}`, { method: "DELETE" });
             const body = await res.json().catch(() => null);
             if (!res.ok) throw new Error(body?.message || "Delete failed");
             setData(prev => prev ? ({ ...prev, files: prev.files.filter(f => f.key !== key) }) : prev);
@@ -238,10 +214,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         setDownloadingAll(true);
 
         try {
-            const headers: Record<string, string> = {};
-            if (password) headers["x-clip-password"] = password;
-
-            const res = await fetch(`/api/clip/${code}/zip`, { headers });
+            const res = await fetch(`/api/clip/${code}/zip`);
             if (!res.ok) {
                 const body = await res.json().catch(() => null);
                 throw new Error(body?.message || "ZIP download failed");
@@ -298,43 +271,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                         <Skeleton className="h-32 w-full" />
                         <Skeleton className="h-10 w-full" />
                     </CardContent>
-                </Card>
-            </div>
-        );
-    }
-
-    if (needsPassword) {
-        return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-4">
-                <Card className="w-full max-w-md border-border shadow-lg">
-                    <CardHeader className="text-center">
-                        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 mx-auto mb-2">
-                            <Lock className="w-6 h-6 text-primary" />
-                        </div>
-                        <CardTitle className="text-xl">Password Protected</CardTitle>
-                        <CardDescription className="text-sm">This clip is locked. Enter the password to view it.</CardDescription>
-                    </CardHeader>
-                    <form onSubmit={handlePasswordSubmit}>
-                        <CardContent>
-                            <Input
-                                type="password"
-                                placeholder="Enter clip password"
-                                className="h-11 text-center rounded-md font-mono"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                autoFocus
-                            />
-                        </CardContent>
-                        <CardFooter className="flex gap-2">
-                            <Button type="button" variant="outline" className="flex-1" asChild>
-                                <Link href="/">Back</Link>
-                            </Button>
-                            <Button type="submit" className="flex-1" disabled={!password.trim() || passwordChecking}>
-                                {passwordChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                                {passwordChecking ? "Checking..." : "Unlock"}
-                            </Button>
-                        </CardFooter>
-                    </form>
                 </Card>
             </div>
         );

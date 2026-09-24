@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { encryptText, hashCode } from "@/lib/encryption";
-import { hashClipPassword } from "@/lib/clip-auth";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { generateCode } from "@/lib/codes";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { MAX_TOTAL_SIZE } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MAX_TOTAL_SIZE = 30 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 500_000; // ~500KB
 const MAX_FILES = 20;
 const VALID_EXPIRY_HOURS = new Set([1, 24]);
@@ -75,7 +73,6 @@ export async function POST(req: Request) {
       const expiryHours = VALID_EXPIRY_HOURS.has(Number(rawExpiry))
         ? Number(rawExpiry)
         : 24;
-      const password = typeof body?.password === "string" ? body.password : "";
 
       if (text.length > MAX_TEXT_LENGTH) {
         return NextResponse.json(
@@ -109,13 +106,15 @@ export async function POST(req: Request) {
 
       const totalSize = savedFiles.reduce((sum, f) => sum + f.size, 0);
       if (totalSize > MAX_TOTAL_SIZE) {
-        return NextResponse.json({ message: "Limit exceeded (max 30MB)" }, { status: 400 });
+        return NextResponse.json(
+          { message: `Limit exceeded (max ${MAX_TOTAL_SIZE / (1024 * 1024)}MB)` },
+          { status: 400 }
+        );
       }
 
       const code = await generateUniqueCode();
       const encryptedText = encryptText(text);
       const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
-      const { salt, passwordHash } = hashPassword(password);
 
       await Clip.create({
         code: hashCode(code),
@@ -124,8 +123,6 @@ export async function POST(req: Request) {
         totalSize,
         isOneTimeView,
         expiresAt,
-        passwordHash,
-        salt,
       });
 
       return NextResponse.json({ code }, { status: 201 });
@@ -139,7 +136,6 @@ export async function POST(req: Request) {
     const expiryHours = VALID_EXPIRY_HOURS.has(Number(rawExpiry))
       ? Number(rawExpiry)
       : 24;
-    const password = (formData.get("password") as string) || "";
 
     if (text.length > MAX_TEXT_LENGTH) {
       return NextResponse.json(
@@ -152,7 +148,10 @@ export async function POST(req: Request) {
 
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     if (totalSize > MAX_TOTAL_SIZE) {
-      return NextResponse.json({ message: "Limit exceeded (max 30MB)" }, { status: 400 });
+      return NextResponse.json(
+        { message: `Limit exceeded (max ${MAX_TOTAL_SIZE / (1024 * 1024)}MB)` },
+        { status: 400 }
+      );
     }
 
     const savedFiles: { filename: string; path: string; size: number; key: string; resourceType: string }[] = [];
@@ -214,8 +213,6 @@ export async function POST(req: Request) {
     const encryptedText = encryptText(text);
     const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
-    const { salt, passwordHash } = hashPassword(password);
-
     await Clip.create({
       code: hashCode(code),
       text: encryptedText,
@@ -223,8 +220,6 @@ export async function POST(req: Request) {
       totalSize,
       isOneTimeView,
       expiresAt,
-      passwordHash,
-      salt,
     });
 
     return NextResponse.json({ code }, { status: 201 });
@@ -243,13 +238,4 @@ async function generateUniqueCode(): Promise<string> {
     if (!exists) break;
   }
   return code;
-}
-
-function hashPassword(password: string): {
-  salt: string | undefined;
-  passwordHash: string | undefined;
-} {
-  if (!password) return { salt: undefined, passwordHash: undefined };
-  const salt = randomBytes(16).toString("hex");
-  return { salt, passwordHash: hashClipPassword(password, salt) };
 }

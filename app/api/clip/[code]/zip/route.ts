@@ -4,7 +4,7 @@ import { ZipFile } from "yazl";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { hashCode } from "@/lib/encryption";
-import { hasValidClipPassword, isClipExpired } from "@/lib/clip-auth";
+import { isClipExpired } from "@/lib/clip-auth";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -32,10 +32,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
 
     if (isClipExpired(clip.expiresAt)) {
       return NextResponse.json({ message: "Clip has expired" }, { status: 410 });
-    }
-
-    if (!hasValidClipPassword(clip, req.headers.get("x-clip-password") || "")) {
-      return NextResponse.json({ message: "This clip is password protected" }, { status: 401 });
     }
 
     if (!clip.files || clip.files.length === 0) {

@@ -1,20 +1,27 @@
 /**
  * Client-side image compression.
  *
- * Large photos are the #1 reason uploads blow past Vercel's ~4.5MB
- * serverless body limit. Compressing in the browser (canvas resize +
- * JPEG/WebP re-encode) shrinks them before anything hits the network.
+ * Files upload straight from the browser to Cloudinary, so Vercel's
+ * body limit doesn't apply. The only hard ceiling is Cloudinary's
+ * per-file size cap (10MB for images on the free plan), so we leave
+ * anything that already fits untouched and only re-encode oversized
+ * images down to the cap.
  *
  * Runs entirely in the browser — never import this from server code.
  */
 
+import { CLOUDINARY_MAX_IMAGE_SIZE } from "@/lib/limits";
+
 const COMPRESSIBLE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "bmp"]);
 
-/** Files under this size are sent as-is (no visible benefit to recompressing). */
-export const COMPRESS_SKIP_UNDER = 1.5 * 1024 * 1024;
+/** Leave a little headroom below Cloudinary's exact cap. */
+const COMPRESS_LIMIT = CLOUDINARY_MAX_IMAGE_SIZE - 512 * 1024;
 
-/** Aim to get every image under this so even the legacy path stays safe. */
-export const COMPRESS_TARGET = 4 * 1024 * 1024;
+/** Images that already fit upload as-is — no needless quality loss. */
+export const COMPRESS_SKIP_UNDER = COMPRESS_LIMIT;
+
+/** Target size for images that must be shrunk to fit the cap. */
+export const COMPRESS_TARGET = COMPRESS_LIMIT;
 
 export function isCompressibleImage(filename: string): boolean {
   const ext = filename.split(".").pop()?.toLowerCase() || "";

@@ -9,17 +9,18 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
-  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info, Clock, Lock, History, Trash2,
+  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info, Clock, History, Trash2,
   FileArchive,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { formatBytes } from "@/lib/format";
 import { compressImage, isCompressibleImage, COMPRESS_SKIP_UNDER } from "@/lib/compress";
+import { MAX_TOTAL_SIZE } from "@/lib/limits";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const MAX_TEXT_LENGTH = 500_000;
-const MAX_TOTAL_SIZE = 30 * 1024 * 1024;
+const MAX_TOTAL_MB = MAX_TOTAL_SIZE / (1024 * 1024);
 
 const EXPIRY_OPTIONS = [
   { value: "1", label: "1 hour" },
@@ -60,7 +61,6 @@ export default function Home() {
   const [text, setText] = useState("");
   const [isOneTimeView, setIsOneTimeView] = useState(false);
   const [expiry, setExpiry] = useState("24");
-  const [password, setPassword] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -85,7 +85,7 @@ export default function Home() {
   const handleAccess = (e: React.FormEvent) => {
     e.preventDefault();
     if (accessCode.trim().length > 0) {
-      router.push(`/clip/${accessCode.trim().toUpperCase()}`);
+      router.push(`/clip/${accessCode.trim()}`);
     }
   };
 
@@ -163,7 +163,7 @@ export default function Home() {
     const newTotalSize = newFiles.reduce((sum, f) => sum + f.size, 0);
 
     if (currentTotalSize + newTotalSize > MAX_TOTAL_SIZE) {
-      toast.error("Total file size cannot exceed 30MB");
+      toast.error(`Total file size cannot exceed ${MAX_TOTAL_MB}MB`);
       return;
     }
     setFiles((prev) => [...prev, ...newFiles]);
@@ -173,7 +173,7 @@ export default function Home() {
     setFiles(files.filter((_, i) => i !== index));
   };
 
-  /** Upload bytes straight to Cloudinary (bypasses Vercel's ~4.5MB limit). */
+  /** Upload bytes straight to Cloudinary (bypasses the Vercel function limit). */
   const uploadFileDirect = (
     uploadUrl: string,
     fields: Record<string, string>,
@@ -192,7 +192,14 @@ export default function Home() {
           if (xhr.status >= 200 && xhr.status < 300 && data?.secure_url) {
             resolve(data);
           } else {
-            reject(new Error(data?.error?.message || "File upload failed."));
+            const message: string = data?.error?.message || "File upload failed.";
+            reject(
+              new Error(
+                /too large|maximum is|file size/i.test(message)
+                  ? `"${file.name}" is too large for storage. Cloudinary caps images/raw files at 10MB and videos at 100MB per file on the free plan.`
+                  : message
+              )
+            );
           }
         } catch {
           reject(new Error("File upload failed."));
@@ -286,8 +293,8 @@ export default function Home() {
       }
 
       // Phase 2 — upload each file straight to Cloudinary (15–90%).
-      // Bytes never pass through our Vercel function, so the ~4.5MB
-      // serverless body limit doesn't apply.
+      // Bytes never pass through our Vercel function, so its serverless
+      // body limit doesn't apply.
       const uploaded: {
         filename: string;
         path: string;
@@ -342,7 +349,6 @@ export default function Home() {
           formData.append("text", text);
           formData.append("isOneTimeView", String(isOneTimeView));
           formData.append("expiry", expiry);
-          if (password.trim()) formData.append("password", password);
           for (const file of prepared) formData.append("files", file);
           const code = await createViaServer(formData);
           await finishCreate(code);
@@ -360,7 +366,6 @@ export default function Home() {
           text,
           isOneTimeView,
           expiry,
-          password: password.trim(),
           files: uploaded,
         }),
       });
@@ -478,7 +483,6 @@ export default function Home() {
                         <p className="text-xs text-muted-foreground leading-snug">
                           Expires in {EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}
                           {isOneTimeView ? " · one-time view" : ""}
-                          {password ? " · password protected" : ""}
                         </p>
                       </div>
                       <Button className="w-full h-10 sm:h-9 text-sm" onClick={() => router.push(`/clip/${code}`)}>
@@ -502,7 +506,7 @@ export default function Home() {
               <Card className="border-border shadow-md animate-in fade-in slide-in-from-bottom-4 rounded-xl">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-xl">Send File</CardTitle>
-                  <CardDescription className="text-sm">Paste text or upload files (up to 30MB total). Images over 1.5MB are compressed automatically.</CardDescription>
+                  <CardDescription className="text-sm">Paste text or upload files (up to {MAX_TOTAL_MB}MB total). Oversized photos are compressed automatically.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -531,7 +535,7 @@ export default function Home() {
                           <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-4 text-center">
                             <UploadCloud className="w-8 h-8 text-muted-foreground" />
                             <p className="font-medium text-sm">Click or drag files &amp; folders here</p>
-                            <p className="text-xs text-muted-foreground">Any file type up to 30MB · photos auto-compress</p>
+                            <p className="text-xs text-muted-foreground">Any file type up to {MAX_TOTAL_MB}MB · photos auto-compress</p>
                             <div className="flex gap-2 mt-2">
                               <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
                                 <Plus className="w-3 h-3 mr-1" /> Files
@@ -630,22 +634,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Password (optional) */}
-                  <div className="space-y-2">
-                    <Label htmlFor="clip-password" className="text-sm flex items-center gap-1.5">
-                      <Lock className="w-4 h-4 text-muted-foreground" /> Password (optional)
-                    </Label>
-                    <Input
-                      id="clip-password"
-                      type="password"
-                      placeholder="Protect this clip with a password"
-                      className="h-10 rounded-md"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      maxLength={64}
-                    />
-                  </div>
-
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/30 p-3 border border-border rounded-md">
                     <div className="flex items-center space-x-2">
                       <input
@@ -684,7 +672,7 @@ export default function Home() {
             <Card className="border-border shadow-sm animate-in fade-in rounded-xl w-full">
               <CardHeader className="pb-1 pt-4">
                 <CardTitle className="text-base">Access Clip</CardTitle>
-                <CardDescription className="text-xs">Enter the 6-character code to open shared content.</CardDescription>
+                <CardDescription className="text-xs">Enter the 4-digit code to open shared content.</CardDescription>
               </CardHeader>
               <form onSubmit={handleAccess}>
                 <CardContent className="space-y-2">
@@ -692,11 +680,12 @@ export default function Home() {
                     <Label htmlFor="code" className="text-xs">Access Code</Label>
                     <Input
                       id="code"
-                      placeholder="A1B2C3"
-                      className="text-center text-xl tracking-[0.4em] uppercase font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm"
-                      maxLength={6}
+                      inputMode="numeric"
+                      placeholder="0000"
+                      className="text-center text-xl tracking-[0.4em] font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm"
+                      maxLength={4}
                       value={accessCode}
-                      onChange={(e) => setAccessCode(e.target.value)}
+                      onChange={(e) => setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
                       required
                     />
                   </div>

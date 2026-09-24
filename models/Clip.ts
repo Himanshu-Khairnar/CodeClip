@@ -17,8 +17,6 @@ export interface IClip extends mongoose.Document {
   expiresAt: Date;
   isOneTimeView?: boolean;
   consumed?: boolean;
-  passwordHash?: string;
-  salt?: string;
 }
 
 const FileSchema = new mongoose.Schema({
@@ -36,8 +34,6 @@ const ClipSchema = new mongoose.Schema({
   totalSize: { type: Number, default: 0 },
   isOneTimeView: { type: Boolean, default: false },
   consumed: { type: Boolean, default: false },
-  passwordHash: { type: String },
-  salt: { type: String },
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
 });

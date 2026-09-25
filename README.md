@@ -76,7 +76,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | `/api/clip/create` | POST | Create a new clip (text + files) |
 | `/api/clip/[code]` | GET | Fetch a clip by its code |
 | `/api/clip/[code]` | DELETE | Delete a clip and its files |
-| `/api/cleanup` | GET | Delete all clips older than 2 minutes (cron) |
+| `/api/cleanup` | GET | Delete expired clips and their files (daily cron) |
 
 ## Deployment (Vercel)
 

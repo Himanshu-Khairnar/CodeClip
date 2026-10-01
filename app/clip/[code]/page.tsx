@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
+import { CodeBadge } from "@/components/code-badge";
 import { formatBytes } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -65,6 +66,21 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
             if (!res.ok) {
                 setError(resData.message || "Clip not found or expired.");
+                // Clip is gone on the server (deleted/expired) — drop it
+                // from this device's local history so it doesn't linger.
+                if (res.status === 404 || res.status === 410) {
+                    try {
+                        const raw = localStorage.getItem("codeclip-history");
+                        if (raw) {
+                            const next = (JSON.parse(raw) as { code: string }[]).filter(
+                                (h) => h.code !== code
+                            );
+                            localStorage.setItem("codeclip-history", JSON.stringify(next));
+                        }
+                    } catch {
+                        // ignore
+                    }
+                }
                 setLoading(false);
                 return;
             }
@@ -246,66 +262,54 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center p-4">
-                <Card className="w-full max-w-xl">
-                    <CardHeader>
-                        <Skeleton className="h-8 w-3/4 mb-2" />
+            <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
+                <div className="mx-auto w-full max-w-3xl flex flex-col gap-3">
+                    <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4">
+                        <Skeleton className="h-8 w-3/4" />
                         <Skeleton className="h-4 w-1/2" />
-                    </CardHeader>
-                    <CardContent className="space-y-4">
                         <Skeleton className="h-32 w-full" />
                         <Skeleton className="h-10 w-full" />
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-4">
-                <Card className="w-full max-w-md border-destructive/50 shadow-lg shadow-destructive/10">
-                    <CardHeader className="text-center">
-                        <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-2" />
-                        <CardTitle className="text-2xl text-destructive">Error</CardTitle>
-                        <CardDescription>{error}</CardDescription>
-                    </CardHeader>
-                    <CardFooter className="flex justify-center">
-                        <Button asChild>
-                            <Link href="/">Back to Home</Link>
-                        </Button>
-                    </CardFooter>
-                </Card>
+            <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
+                <div className="mx-auto w-full max-w-3xl flex flex-col gap-3">
+                    <Card className="w-full max-w-md mx-auto border-destructive/50 shadow-md rounded-xl">
+                        <CardHeader className="text-center">
+                            <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-2" />
+                            <CardTitle className="text-2xl text-destructive">Error</CardTitle>
+                            <CardDescription>{error}</CardDescription>
+                        </CardHeader>
+                        <CardFooter className="flex justify-center">
+                            <Button asChild>
+                                <Link href="/">Back to Home</Link>
+                            </Button>
+                        </CardFooter>
+                    </Card>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 bg-background flex flex-col items-center justify-center px-3 py-6 sm:p-4 sm:py-10">
-            <div className="w-full max-w-3xl lg:max-w-4xl">
-                <div className="mb-4 sm:mb-6 flex items-center justify-between">
-                    <Button variant="ghost" size="sm" asChild className="h-9">
+        <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
+            <div className="mx-auto w-full max-w-3xl flex flex-col gap-3">
+                <div className="flex w-full items-center gap-1 rounded-xl border border-border bg-card p-1.5 animate-in fade-in slide-in-from-top-4">
+                    <Button variant="ghost" size="sm" asChild className="h-10 shrink-0 rounded-lg px-3">
                         <Link href="/"><ArrowLeft className="w-4 h-4 mr-2" /> Back</Link>
                     </Button>
-                </div>
-
-                <div className="text-center mb-6 sm:mb-8 animate-in fade-in slide-in-from-top-4 px-2">
-                    <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-primary text-primary-foreground flex items-center justify-center rounded-xl font-bold text-xl sm:text-2xl shadow-sm shrink-0">
-                            C
-                        </div>
-                        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Clip Access</h1>
-                    </div>
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 sm:px-4 py-1.5 max-w-full">
-                        <span className="font-mono text-base sm:text-lg font-bold tracking-[0.2em] sm:tracking-[0.3em] text-primary truncate">{code}</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => { navigator.clipboard.writeText(code); toast.success("Code copied to clipboard!"); }} title="Copy code">
-                            <Copy className="w-3.5 h-3.5 text-primary" />
-                        </Button>
+                    <div className="flex flex-1 items-center justify-center min-w-0">
+                        <CodeBadge code={code} className="w-full" />
                     </div>
                 </div>
 
                 {data ? (
-                    <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <section className="min-w-0 flex-1 rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4 sm:space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[11px] sm:text-xs text-muted-foreground text-center">
                             {data.createdAt && (
                                 <span className="flex items-center gap-1.5">
@@ -490,7 +494,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                 </CardContent>
                             </Card>
                         )}
-                    </div>
+                    </section>
                 ) : null}
             </div>
         </div>

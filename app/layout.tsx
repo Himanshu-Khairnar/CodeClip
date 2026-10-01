@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Github } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Analytics } from "@vercel/analytics/next";
+import Image from "next/image";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,6 +57,13 @@ export default function RootLayout({
             style={{ position: "fixed", right: "1rem", bottom: "1rem" }}
             className="z-50 flex flex-col items-center gap-2 sm:gap-3"
           >
+            <Image
+              src="/logo.svg"
+              alt="CodeClip logo"
+              width={28}
+              height={28}
+              className="h-7 w-7 rounded-md shadow-sm"
+            />
             <div className="flex flex-col items-center font-mono font-bold text-sm text-foreground leading-tight" aria-label="CodeClip">
               <span>C</span>
               <span>o</span>

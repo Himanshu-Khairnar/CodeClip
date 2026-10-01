@@ -4,15 +4,16 @@ import { useState, useRef, DragEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Label } from "@/components/ui/label";
 import {
   UploadCloud, CheckCircle2, Copy, ExternalLink, X, Info, Clock, History, Trash2,
   KeyRound,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
+import { Panel, Field } from "@/components/panel";
+import { CopyRow } from "@/components/code-badge";
 import { formatBytes } from "@/lib/format";
 import { compressImage, isCompressibleImage, COMPRESS_SKIP_UNDER } from "@/lib/compress";
 import { MAX_TOTAL_SIZE } from "@/lib/limits";
@@ -26,6 +27,15 @@ const EXPIRY_OPTIONS = [
   { value: "1", label: "1 hour" },
   { value: "24", label: "24 hours" },
 ];
+
+const TABS = [
+  { value: "create", label: "Create Clip", Icon: UploadCloud },
+  { value: "access", label: "Access Clip", Icon: KeyRound },
+  { value: "history", label: "History", Icon: History },
+] as const;
+
+const TAB_TRIGGER_CLASS =
+  "flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm";
 
 interface HistoryItem {
   code: string;
@@ -74,7 +84,6 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -148,13 +157,6 @@ export default function Home() {
       handleFiles(Array.from(e.target.files));
     }
     e.target.value = "";
-  };
-
-  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFiles(Array.from(e.target.files));
-    }
-    if (e.target) e.target.value = "";
   };
 
   const handleFiles = (newFiles: File[]) => {
@@ -401,7 +403,13 @@ export default function Home() {
       setCode("");
       setFiles([]);
       setText("");
-      setHistory(loadHistory().filter((h) => h.code !== code));
+      const next = loadHistory().filter((h) => h.code !== code);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      setHistory(next);
     }
   };
 
@@ -424,28 +432,22 @@ export default function Home() {
       <div className="w-full max-w-3xl mx-auto">
         <Tabs defaultValue="create" orientation="vertical" className="flex w-full flex-col gap-3 sm:flex-row sm:items-start">
           <TabsList className="flex w-full shrink-0 flex-row gap-1 rounded-xl border border-border bg-card p-1.5 sm:w-44 sm:flex-col">
-            <TabsTrigger value="create" className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm">
-              <UploadCloud className="h-4 w-4 shrink-0" />
-              <span>Create Clip</span>
-            </TabsTrigger>
-            <TabsTrigger value="access" className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm">
-              <KeyRound className="h-4 w-4 shrink-0" />
-              <span>Access Clip</span>
-            </TabsTrigger>
-            <TabsTrigger value="history" className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm">
-              <History className="h-4 w-4 shrink-0" />
-              <span>History</span>
-            </TabsTrigger>
+            {TABS.map(({ value, label, Icon }) => (
+              <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
+                <Icon className="h-4 w-4 shrink-0" />
+                <span>{label}</span>
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           <div className="min-w-0 flex-1">
 
-          <TabsContent value="create" className="mt-0">
+          <TabsContent value="create" className="mt-0 animate-rise">
             {code ? (
               <Card className="border-border shadow-md animate-in fade-in zoom-in duration-300 rounded-xl overflow-hidden">
                 {/* Success header */}
                 <div className="flex flex-col items-center gap-2 py-4 px-6 text-center border-b border-border bg-muted/20">
-                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20">
+                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 animate-pop">
                     <CheckCircle2 className="w-6 h-6 text-primary" />
                   </div>
                   <div>
@@ -456,26 +458,20 @@ export default function Home() {
 
                 <CardContent className="p-4 space-y-3">
                   {/* Access code */}
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Access Code</Label>
-                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-2.5 sm:px-3 py-2">
-                      <span className="flex-1 text-xl sm:text-2xl font-mono tracking-[0.2em] sm:tracking-[0.3em] font-bold text-center break-all">{code}</span>
-                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(code)} className="h-8 w-8 shrink-0">
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
+                  <Field label="Access Code" labelClassName="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <CopyRow
+                      value={code}
+                      truncate={false}
+                      valueClassName="text-center text-xl font-bold tracking-[0.2em] text-foreground sm:text-2xl sm:tracking-[0.3em]"
+                      className="py-2"
+                      buttonClassName="h-8 w-8"
+                    />
+                  </Field>
 
                   {/* Direct link */}
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] text-muted-foreground uppercase tracking-wider">Direct Link</Label>
-                    <div className="flex items-center gap-2 bg-muted rounded-lg border border-border px-2.5 sm:px-3 py-1.5">
-                      <span className="flex-1 text-[11px] sm:text-xs text-muted-foreground truncate font-mono min-w-0">{clipUrl}</span>
-                      <Button variant="ghost" size="icon" onClick={() => copyToClipboard(clipUrl)} className="h-7 w-7 shrink-0">
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
+                  <Field label="Direct Link" labelClassName="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <CopyRow value={clipUrl} valueClassName="text-[11px] text-muted-foreground sm:text-xs" />
+                  </Field>
 
                   {/* QR + info - stacks on mobile */}
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch pt-0.5">
@@ -510,14 +506,12 @@ export default function Home() {
                 </CardFooter>
               </Card>
             ) : (
-              <Card className="border-border shadow-md animate-in fade-in slide-in-from-bottom-4 rounded-xl">
-                <CardHeader className="pb-2 pt-4">
-                  <CardTitle className="text-base">Send File</CardTitle>
-                  <CardDescription className="text-xs">Paste text or upload files (up to {MAX_TOTAL_MB}MB total).</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="text" className="text-sm">Text Content</Label>
+              <Panel
+                title="Send File"
+                description={`Paste text or upload files (up to ${MAX_TOTAL_MB}MB total).`}
+                className="shadow-md animate-in fade-in slide-in-from-bottom-4"
+              >
+                  <Field label="Text Content" htmlFor="text" labelClassName="text-sm">
                     <Textarea
                       id="text"
                       placeholder="Paste your text here..."
@@ -527,12 +521,11 @@ export default function Home() {
                       onChange={(e) => setText(e.target.value)}
                     />
                     <p className="text-[11px] text-muted-foreground text-right">{text.length.toLocaleString('en-US')} / {MAX_TEXT_LENGTH.toLocaleString('en-US')} chars</p>
-                  </div>
+                  </Field>
 
-                  <div className="space-y-2">
-                    <Label className="text-sm">Files</Label>
+                  <Field label="Files" labelClassName="text-sm">
                     <div
-                      className={`border border-dashed rounded-md transition-colors h-48 overflow-hidden flex flex-col ${isDragging ? "border-primary bg-primary/5" : files.length > 0 ? "border-border bg-card" : "border-muted-foreground/40 hover:border-primary/60 cursor-pointer"}`}
+                      className={`border border-dashed rounded-md transition-colors h-40 overflow-hidden flex flex-col ${isDragging ? "border-primary bg-primary/5" : files.length > 0 ? "border-border bg-card" : "border-muted-foreground/40 hover:border-primary/60 cursor-pointer"}`}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
@@ -549,12 +542,12 @@ export default function Home() {
                             <div className="border-b border-border bg-muted/30 px-3 py-2 shrink-0">
                               <span className="text-xs font-medium text-muted-foreground truncate">Selected Files ({files.length}) · {formatBytes(files.reduce((s, f) => s + f.size, 0))}</span>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
+                            <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1.5">
                               {files.map((file, i) => {
                                 const formattedSize = formatBytes(file.size);
 
                                 return (
-                                  <div key={i} className="flex items-center justify-between bg-muted/40 px-2.5 py-1.5 rounded-md text-sm border border-border">
+                                  <div key={i} className="flex items-center justify-between bg-muted/40 px-2.5 py-1.5 rounded-md text-sm border border-border animate-rise" style={{ animationDelay: `${Math.min(i * 30, 180)}ms` }}>
                                     <div className="flex items-center gap-2.5 overflow-hidden">
                                       {getFileIcon(file.name)}
                                       <span className="truncate font-medium text-xs">{file.name}</span>
@@ -583,22 +576,18 @@ export default function Home() {
                           ref={fileInputRef}
                           onChange={handleFileSelect}
                         />
-                        <input
-                          type="file"
-                          multiple
-                          className="hidden"
-                          ref={folderInputRef}
-                          onChange={handleFolderSelect}
-                          {...({ webkitdirectory: "", directory: "" } as unknown as React.InputHTMLAttributes<HTMLInputElement>)}
-                        />
                       </div>
-                    </div>
+                  </Field>
 
                   {/* Expiry selector */}
-                  <div className="space-y-2">
-                    <Label className="text-sm flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-muted-foreground" /> Expires in
-                    </Label>
+                  <Field
+                    label={
+                      <>
+                        <Clock className="w-4 h-4 text-muted-foreground" /> Expires in
+                      </>
+                    }
+                    labelClassName="flex items-center gap-1.5 text-sm"
+                  >
                     <div className="grid grid-cols-2 gap-2">
                       {EXPIRY_OPTIONS.map((opt) => (
                         <button
@@ -611,12 +600,12 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </Field>
 
                   <Button
                     onClick={handleUpload}
                     disabled={uploading}
-                    className="h-9 text-[13px] font-medium rounded-md shadow-sm w-full"
+                    className="h-9 text-[13px] font-medium rounded-md shadow-sm w-full transition-transform active:scale-[0.98]"
                   >
                     {uploading ? "Creating..." : "Create Clipboard"}
                   </Button>
@@ -630,56 +619,49 @@ export default function Home() {
                       <Progress value={progress} className="h-2" />
                     </div>
                   )}
-                </CardContent>
-              </Card>
+              </Panel>
             )}
           </TabsContent>
 
-          <TabsContent value="access" className="mt-0">
-            <Card className="border-border shadow-sm animate-in fade-in rounded-xl w-full">
-              <CardHeader className="pb-1 pt-4">
-                <CardTitle className="text-base">Access Clip</CardTitle>
-                <CardDescription className="text-xs">Enter the 4-digit code to open shared content.</CardDescription>
-              </CardHeader>
-              <form onSubmit={handleAccess}>
-                <CardContent className="space-y-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="code" className="text-xs">Access Code</Label>
-                    <Input
-                      id="code"
-                      inputMode="numeric"
-                      placeholder="0000"
-                      className="text-center text-xl tracking-[0.4em] font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm"
-                      maxLength={4}
-                      value={accessCode}
-                      onChange={(e) => setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                      required
-                    />
-                  </div>
-                </CardContent>
-                <CardFooter className="pt-2">
-                  <Button type="submit" className="w-full h-10 rounded-md shadow-sm" disabled={!accessCode.trim()}>
-                    Access Now
-                  </Button>
-                </CardFooter>
+          <TabsContent value="access" className="mt-0 animate-rise">
+            <Panel
+              title="Access Clip"
+              description="Enter the 4-digit code to open shared content."
+              className="animate-in fade-in"
+            >
+              <form onSubmit={handleAccess} className="space-y-3">
+                <Field label="Access Code" htmlFor="code">
+                  <Input
+                    id="code"
+                    inputMode="numeric"
+                    placeholder="0000"
+                    className="text-center text-xl tracking-[0.4em] font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm"
+                    maxLength={4}
+                    value={accessCode}
+                    onChange={(e) => setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    required
+                  />
+                </Field>
+                <Button type="submit" className="w-full h-10 rounded-md shadow-sm transition-transform active:scale-[0.98]" disabled={!accessCode.trim()}>
+                  Access Now
+                </Button>
               </form>
-            </Card>
+            </Panel>
           </TabsContent>
 
-          <TabsContent value="history" className="mt-0">
-            <Card className="border-border shadow-sm animate-in fade-in rounded-xl w-full">
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <History className="w-4 h-4" /> Recent Clips
-                </CardTitle>
-                <CardDescription className="text-xs">Clips you created on this device (stored locally).</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
+          <TabsContent value="history" className="mt-0 animate-rise">
+            <Panel
+              title="Recent Clips"
+              icon={<History className="w-4 h-4" />}
+              description="Clips you created on this device (stored locally)."
+              contentClassName="space-y-2"
+              className="animate-in fade-in"
+            >
                 {history.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-6">No clips created yet on this device.</p>
                 ) : (
-                  history.map((item) => (
-                    <div key={item.code} className="flex items-center gap-2 sm:gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5">
+                  history.map((item, idx) => (
+                    <div key={item.code} className="flex items-center gap-2 sm:gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5 animate-rise" style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}>
                       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => router.push(`/clip/${item.code}`)}>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-mono font-bold text-sm tracking-widest text-primary shrink-0">{item.code}</span>
@@ -703,8 +685,7 @@ export default function Home() {
                     </div>
                   ))
                 )}
-              </CardContent>
-            </Card>
+            </Panel>
           </TabsContent>
           </div>
         </Tabs>

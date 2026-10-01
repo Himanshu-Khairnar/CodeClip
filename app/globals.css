@@ -40,7 +40,7 @@
   --font-sans: Geist Mono, monospace;
   --font-serif: Geist Mono, monospace;
   --font-mono: Geist Mono, monospace;
-  --radius: 0rem;
+  --radius: 0.625rem;
   --shadow-x: 0px;
   --shadow-y: 1px;
   --shadow-blur: 0px;
@@ -95,7 +95,7 @@
   --font-sans: Geist Mono, monospace;
   --font-serif: Geist Mono, monospace;
   --font-mono: Geist Mono, monospace;
-  --radius: 0rem;
+  --radius: 0.625rem;
   --shadow-x: 0px;
   --shadow-y: 1px;
   --shadow-blur: 0px;

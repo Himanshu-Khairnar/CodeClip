@@ -9,8 +9,8 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
-  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Plus, Info, Clock, History, Trash2,
-  FileArchive,
+  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Info, Clock, History, Trash2,
+  KeyRound,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { formatBytes } from "@/lib/format";
@@ -59,7 +59,6 @@ function saveHistoryItem(item: HistoryItem) {
 
 export default function Home() {
   const [text, setText] = useState("");
-  const [isOneTimeView, setIsOneTimeView] = useState(false);
   const [expiry, setExpiry] = useState("24");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -347,7 +346,6 @@ export default function Home() {
           setUploadStatus("Retrying via server…");
           const formData = new FormData();
           formData.append("text", text);
-          formData.append("isOneTimeView", String(isOneTimeView));
           formData.append("expiry", expiry);
           for (const file of prepared) formData.append("files", file);
           const code = await createViaServer(formData);
@@ -364,7 +362,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          isOneTimeView,
           expiry,
           files: uploaded,
         }),
@@ -423,14 +420,25 @@ export default function Home() {
   const getFileIcon = (name: string) => <FileIcon filename={name} />;
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-start sm:justify-center px-3 py-4 sm:p-4 pb-6 sm:pb-4">
-      <div className="w-full max-w-lg lg:max-w-xl">
-        <Tabs defaultValue="create" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-4 sm:mb-6 h-10 sm:h-11 p-1">
-            <TabsTrigger value="create" className="text-xs sm:text-sm px-1 sm:px-3">Create Clip</TabsTrigger>
-            <TabsTrigger value="access" className="text-xs sm:text-sm px-1 sm:px-3">Access Clip</TabsTrigger>
-            <TabsTrigger value="history" className="text-xs sm:text-sm px-1 sm:px-3">History</TabsTrigger>
+    <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
+      <div className="w-full max-w-3xl mx-auto">
+        <Tabs defaultValue="create" orientation="vertical" className="flex w-full flex-col gap-3 sm:flex-row sm:items-start">
+          <TabsList className="flex w-full shrink-0 flex-row gap-1 rounded-xl border border-border bg-card p-1.5 sm:w-44 sm:flex-col">
+            <TabsTrigger value="create" className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm">
+              <UploadCloud className="h-4 w-4 shrink-0" />
+              <span>Create Clip</span>
+            </TabsTrigger>
+            <TabsTrigger value="access" className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm">
+              <KeyRound className="h-4 w-4 shrink-0" />
+              <span>Access Clip</span>
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm">
+              <History className="h-4 w-4 shrink-0" />
+              <span>History</span>
+            </TabsTrigger>
           </TabsList>
+
+          <div className="min-w-0 flex-1">
 
           <TabsContent value="create" className="mt-0">
             {code ? (
@@ -482,7 +490,6 @@ export default function Home() {
                         <Info className="w-4 h-4 text-primary shrink-0" />
                         <p className="text-xs text-muted-foreground leading-snug">
                           Expires in {EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}
-                          {isOneTimeView ? " · one-time view" : ""}
                         </p>
                       </div>
                       <Button className="w-full h-10 sm:h-9 text-sm" onClick={() => router.push(`/clip/${code}`)}>
@@ -504,17 +511,17 @@ export default function Home() {
               </Card>
             ) : (
               <Card className="border-border shadow-md animate-in fade-in slide-in-from-bottom-4 rounded-xl">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-xl">Send File</CardTitle>
-                  <CardDescription className="text-sm">Paste text or upload files (up to {MAX_TOTAL_MB}MB total). Oversized photos are compressed automatically.</CardDescription>
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="text-base">Send File</CardTitle>
+                  <CardDescription className="text-xs">Paste text or upload files (up to {MAX_TOTAL_MB}MB total).</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-3">
                   <div className="space-y-2">
                     <Label htmlFor="text" className="text-sm">Text Content</Label>
                     <Textarea
                       id="text"
                       placeholder="Paste your text here..."
-                      className="h-40 w-full resize-y font-mono text-sm"
+                      className="h-20 w-full resize-y font-mono text-sm"
                       value={text}
                       maxLength={MAX_TEXT_LENGTH}
                       onChange={(e) => setText(e.target.value)}
@@ -525,50 +532,22 @@ export default function Home() {
                   <div className="space-y-2">
                     <Label className="text-sm">Files</Label>
                     <div
-                      className={`border border-dashed rounded-md transition-colors h-40 overflow-hidden flex flex-col ${isDragging ? "border-primary bg-primary/5" : files.length > 0 ? "border-border bg-card" : "border-muted-foreground/40 hover:border-primary/60 cursor-pointer"}`}
+                      className={`border border-dashed rounded-md transition-colors h-48 overflow-hidden flex flex-col ${isDragging ? "border-primary bg-primary/5" : files.length > 0 ? "border-border bg-card" : "border-muted-foreground/40 hover:border-primary/60 cursor-pointer"}`}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
                       onClick={() => { if (files.length === 0) fileInputRef.current?.click(); }}
                     >
                          {files.length === 0 ? (
-                          <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-4 text-center">
-                            <UploadCloud className="w-8 h-8 text-muted-foreground" />
-                            <p className="font-medium text-sm">Click or drag files &amp; folders here</p>
-                            <p className="text-xs text-muted-foreground">Any file type up to {MAX_TOTAL_MB}MB · photos auto-compress</p>
-                            <div className="flex gap-2 mt-2">
-                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-                                <Plus className="w-3 h-3 mr-1" /> Files
-                              </Button>
-                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); folderInputRef.current?.click(); }}>
-                                <FileArchive className="w-3 h-3 mr-1" /> Folder
-                              </Button>
-                            </div>
+                          <div className="flex flex-1 flex-col items-center justify-center gap-1 p-3 text-center">
+                            <UploadCloud className="w-6 h-6 text-muted-foreground" />
+                            <p className="font-medium text-[13px]">Click or drag files &amp; folders here</p>
+                            <p className="text-[11px] text-muted-foreground">Any file type up to {MAX_TOTAL_MB}MB · photos auto-compress</p>
                           </div>
                         ) : (
                           <>
-                            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2 shrink-0 gap-2">
+                            <div className="border-b border-border bg-muted/30 px-3 py-2 shrink-0">
                               <span className="text-xs font-medium text-muted-foreground truncate">Selected Files ({files.length}) · {formatBytes(files.reduce((s, f) => s + f.size, 0))}</span>
-                              <div className="flex gap-1 shrink-0">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs gap-1"
-                                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                                >
-                                  <Plus className="w-3.5 h-3.5" /> Files
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs gap-1 hidden sm:inline-flex"
-                                  onClick={(e) => { e.stopPropagation(); folderInputRef.current?.click(); }}
-                                >
-                                  <FileArchive className="w-3.5 h-3.5" /> Folder
-                                </Button>
-                              </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
                               {files.map((file, i) => {
@@ -626,7 +605,7 @@ export default function Home() {
                           key={opt.value}
                           type="button"
                           onClick={() => setExpiry(opt.value)}
-                          className={`h-9 rounded-md border text-sm font-medium transition-colors ${expiry === opt.value ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-primary/50"}`}
+                          className={`h-8 rounded-md border text-[13px] font-medium transition-colors ${expiry === opt.value ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-primary/50"}`}
                         >
                           {opt.label}
                         </button>
@@ -634,25 +613,13 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/30 p-3 border border-border rounded-md">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="oneTime"
-                        className="w-4 h-4 rounded border-input text-primary focus:ring-primary accent-primary shrink-0"
-                        checked={isOneTimeView}
-                        onChange={(e) => setIsOneTimeView(e.target.checked)}
-                      />
-                      <Label htmlFor="oneTime" className="cursor-pointer text-xs sm:text-sm leading-tight">Auto-delete after first view</Label>
-                    </div>
-                    <Button
-                      onClick={handleUpload}
-                      disabled={uploading}
-                      className="h-11 sm:h-10 text-sm font-medium rounded-md shadow-sm w-full sm:w-auto shrink-0"
-                    >
-                      {uploading ? "Creating..." : "Create Clipboard"}
-                    </Button>
-                  </div>
+                  <Button
+                    onClick={handleUpload}
+                    disabled={uploading}
+                    className="h-9 text-[13px] font-medium rounded-md shadow-sm w-full"
+                  >
+                    {uploading ? "Creating..." : "Create Clipboard"}
+                  </Button>
 
                   {uploading && (
                     <div className="space-y-1.5">
@@ -739,6 +706,7 @@ export default function Home() {
               </CardContent>
             </Card>
           </TabsContent>
+          </div>
         </Tabs>
       </div>
     </div>

@@ -23,7 +23,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
     const { code } = await params;
     const codeHash = hashCode(code);
 
-    let clip = await Clip.findOne({ code: codeHash });
+    const clip = await Clip.findOne({ code: codeHash });
 
     if (!clip) {
       return NextResponse.json({ message: "Clip not found" }, { status: 404 });
@@ -33,25 +33,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
       return NextResponse.json({ message: "Clip has expired" }, { status: 410 });
     }
 
-    // One-time view: atomically claim the clip so a second concurrent
-    // request gets a 410 instead of the content. The clip itself is NOT
-    // deleted here — the recipient keeps working (downloads/previews) and
-    // the /api/cleanup cron purges DB + Cloudinary at expiry.
-    if (clip.isOneTimeView) {
-      const claimed = await Clip.findOneAndUpdate(
-        { _id: clip._id, consumed: { $ne: true } },
-        { $set: { consumed: true } },
-        { new: true }
-      );
-      if (!claimed) {
-        return NextResponse.json(
-          { message: "Clip has already been viewed and deleted" },
-          { status: 410 }
-        );
-      }
-      clip = claimed;
-    }
-
     // Decrypt text
     const text = decryptText(clip.text || "");
 
@@ -59,7 +40,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
       code,
       text,
       files: clip.files,
-      isOneTimeView: clip.isOneTimeView,
       createdAt: clip.createdAt,
       expiresAt: clip.expiresAt,
     };

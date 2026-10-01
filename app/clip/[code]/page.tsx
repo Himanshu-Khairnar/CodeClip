@@ -35,12 +35,9 @@ interface ClipData {
     code: string;
     text?: string;
     files: ClipFile[];
-    isOneTimeView?: boolean;
     createdAt?: string;
     expiresAt?: string;
 }
-
-const ONE_TIME_AUTO_DOWNLOAD_DELAY = 400;
 
 export default function ClipPage({ params }: { params: Promise<{ code: string }> }) {
     const unwrappedParams = use(params);
@@ -107,18 +104,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         const interval = setInterval(update, 1000);
         return () => clearInterval(interval);
     }, [data?.expiresAt]);
-
-    // One-time clips are deleted server-side on fetch — save the files locally
-    // immediately so the recipient keeps them.
-    useEffect(() => {
-        if (!data?.isOneTimeView || !data.files || data.files.length === 0) return;
-        const timers = data.files.map((file, i) =>
-            setTimeout(() => {
-                downloadSingleFile(file.path, file.filename).catch(() => {});
-            }, ONE_TIME_AUTO_DOWNLOAD_DELAY * (i + 1))
-        );
-        return () => timers.forEach(clearTimeout);
-    }, [data?.isOneTimeView, data?.files]);
 
     // Fetch text-based file previews on demand
     useEffect(() => {
@@ -335,20 +320,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                 </span>
                             )}
                         </div>
-
-                        {data.isOneTimeView && (
-                            <div className="bg-primary/10 border border-primary/20 text-primary p-4 rounded-md flex items-start gap-3 shadow-sm">
-                                <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="font-medium">One-Time View Enabled</p>
-                                    <p className="text-sm opacity-90">
-                                        This clip can only be viewed once — it will be permanently deleted from the server when it expires.
-                                        {data.files.length > 0 && " Your files are being saved to this device automatically."}
-                                        {data.files.length === 0 && " If you refresh, it will be gone."}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
 
                         {data.text && (
                             <Card className="border-border shadow-sm rounded-xl overflow-hidden">

@@ -68,7 +68,6 @@ export async function POST(req: Request) {
     if (contentType.includes("application/json")) {
       const body = await req.json();
       const text = typeof body?.text === "string" ? body.text : "";
-      const isOneTimeView = body?.isOneTimeView === true;
       const rawExpiry = body?.expiry;
       const expiryHours = VALID_EXPIRY_HOURS.has(Number(rawExpiry))
         ? Number(rawExpiry)
@@ -121,7 +120,6 @@ export async function POST(req: Request) {
         text: encryptedText,
         files: savedFiles,
         totalSize,
-        isOneTimeView,
         expiresAt,
       });
 
@@ -131,7 +129,6 @@ export async function POST(req: Request) {
     // --- Path B: legacy multipart upload (small files, proxied through us)
     const formData = await req.formData();
     const text = (formData.get("text") as string) || "";
-    const isOneTimeView = formData.get("isOneTimeView") === "true";
     const rawExpiry = formData.get("expiry") as string;
     const expiryHours = VALID_EXPIRY_HOURS.has(Number(rawExpiry))
       ? Number(rawExpiry)
@@ -218,7 +215,6 @@ export async function POST(req: Request) {
       text: encryptedText,
       files: savedFiles,
       totalSize,
-      isOneTimeView,
       expiresAt,
     });
 

@@ -4,8 +4,7 @@ A fast, secure temporary clipboard for sharing text and files. Create a clip, sh
 
 ## Features
 
-- **Text & File Sharing** — paste text or upload any file type (up to 100MB total)
-- **One-Time View** — clip auto-deletes after the first access
+- **Text & File Sharing** — paste text or upload any file type (up to 50MB total)
 - **QR Code** — scan to open the clip on any device
 - **AES Encryption** — text content is encrypted before being stored
 - **Auto Cleanup** — server-side cron runs daily to purge stale clips and their files from storage

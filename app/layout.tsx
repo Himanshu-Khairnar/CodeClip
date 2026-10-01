@@ -52,28 +52,27 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <header className="w-full flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-            <div className="text-left min-w-0 flex-1">
-              <div className="flex items-center gap-2 sm:gap-2.5">
-                <div className="w-7 h-7 bg-primary text-primary-foreground flex items-center justify-center rounded-md font-bold text-sm shadow-sm shrink-0">
-                  C
-                </div>
-                <span className="font-mono font-bold text-[15px] sm:text-base text-foreground tracking-tight truncate">CodeClip</span>
-              </div>
-              <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 leading-tight line-clamp-1 sm:line-clamp-none truncate pr-2">
-                Share text &amp; files securely — access any clip with its code.
-              </p>
+          <div
+            style={{ position: "fixed", right: "1rem", bottom: "1rem" }}
+            className="z-50 flex flex-col items-center gap-2 sm:gap-3"
+          >
+            <div className="flex flex-col items-center font-mono font-bold text-sm text-foreground leading-tight" aria-label="CodeClip">
+              <span>C</span>
+              <span>o</span>
+              <span>d</span>
+              <span>e</span>
+              <span>C</span>
+              <span>l</span>
+              <span>i</span>
+              <span>p</span>
             </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10" asChild>
-                <a href="https://github.com/himanshu-khairnar/codeclip" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
-                  <Github className="h-4 w-4" />
-                </a>
-              </Button>
-              <ThemeToggle />
-            </div>
-          </header>
+            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10" asChild>
+              <a href="https://github.com/himanshu-khairnar/codeclip" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
+                <Github className="h-4 w-4" />
+              </a>
+            </Button>
+            <ThemeToggle />
+          </div>
           <main className="flex-1 flex flex-col">
             {children}
           </main>

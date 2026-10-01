@@ -10,12 +10,12 @@
  * Runs entirely in the browser — never import this from server code.
  */
 
-import { CLOUDINARY_MAX_IMAGE_SIZE } from "@/lib/limits";
+import { MAX_IMAGE_SIZE } from "@/lib/limits";
 
 const COMPRESSIBLE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "bmp"]);
 
-/** Leave a little headroom below Cloudinary's exact cap. */
-const COMPRESS_LIMIT = CLOUDINARY_MAX_IMAGE_SIZE - 512 * 1024;
+/** Leave a little headroom below the exact cap. */
+const COMPRESS_LIMIT = MAX_IMAGE_SIZE - 512 * 1024;
 
 /** Images that already fit upload as-is — no needless quality loss. */
 export const COMPRESS_SKIP_UNDER = COMPRESS_LIMIT;

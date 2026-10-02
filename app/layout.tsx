@@ -53,38 +53,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div
-            className="z-50 fixed bottom-3 right-3 sm:bottom-4 sm:right-4 hidden sm:flex flex-col items-center gap-3 rounded-2xl border border-border bg-card/85 p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/70"
-          >
-            <Image
-              src="/logo.svg"
-              alt="CodeClip logo"
-              width={28}
-              height={28}
-              className="h-7 w-7 rounded-md shadow-sm"
-            />
-            <div className="flex flex-col items-center font-mono font-bold text-sm text-foreground leading-tight" aria-label="CodeClip">
-              <span>C</span>
-              <span>o</span>
-              <span>d</span>
-              <span>e</span>
-              <span>C</span>
-              <span>l</span>
-              <span>i</span>
-              <span>p</span>
-            </div>
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-md" asChild>
-              <a href="https://github.com/himanshu-khairnar/codeclip" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
-                <Github className="h-4 w-4" />
-              </a>
-            </Button>
-            <ThemeToggle className="h-10 w-10 rounded-md" />
-          </div>
           <main className="flex-1 flex flex-col min-w-0 overflow-x-clip">
             {children}
           </main>
-          <footer className="sm:hidden border-t border-border bg-card">
-            <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-4 py-3">
+          <footer>
+            <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-3 py-2 sm:px-6">
               <div className="flex items-center gap-2 min-w-0">
                 <Image
                   src="/logo.svg"
@@ -95,13 +68,13 @@ export default function RootLayout({
                 />
                 <span className="font-mono text-xs font-bold tracking-wide truncate">CodeClip</span>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button variant="outline" size="icon" className="h-9 w-9 rounded-md" asChild>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button variant="outline" size="icon" className="h-8 w-8 rounded-md" asChild>
                   <a href="https://github.com/himanshu-khairnar/codeclip" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
                     <Github className="h-4 w-4" />
                   </a>
                 </Button>
-                <ThemeToggle className="h-9 w-9 rounded-md" />
+                <ThemeToggle className="h-8 w-8 rounded-md" />
               </div>
             </div>
           </footer>

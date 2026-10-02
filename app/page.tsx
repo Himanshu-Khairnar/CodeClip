@@ -29,13 +29,13 @@ const EXPIRY_OPTIONS = [
 ];
 
 const TABS = [
-  { value: "create", label: "Create Clip", short: "Create", Icon: UploadCloud },
-  { value: "access", label: "Access Clip", short: "Access", Icon: KeyRound },
-  { value: "history", label: "History", short: "History", Icon: History },
+  { value: "create", label: "Create Clip", short: "Create", align: "max-sm:justify-start!", Icon: UploadCloud },
+  { value: "access", label: "Access Clip", short: "Access", align: "max-sm:justify-center!", Icon: KeyRound },
+  { value: "history", label: "History", short: "History", align: "max-sm:justify-end!", Icon: History },
 ] as const;
 
 const TAB_TRIGGER_CLASS =
-  "flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm min-[420px]:gap-2 min-[420px]:px-3 min-[420px]:text-xs sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm";
+  "flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:gap-2 sm:px-3 sm:text-sm";
 
 interface HistoryItem {
   code: string;
@@ -436,12 +436,12 @@ export default function Home() {
     <div className="flex-1 w-full min-w-0 overflow-x-clip px-3 py-4 sm:px-6 sm:py-6">
       <div className="w-full max-w-3xl mx-auto min-w-0">
         <Tabs defaultValue="create" orientation="vertical" className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
-          <TabsList className="flex w-full shrink-0 flex-row gap-1 rounded-xl border border-border bg-card p-1.5 sm:w-44 sm:flex-col">
-            {TABS.map(({ value, label, short, Icon }) => (
-              <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
+          <TabsList className="flex h-auto! w-full shrink-0 flex-row max-sm:flex-row! gap-1 rounded-xl border border-border bg-card p-1.5 sm:w-44 sm:flex-col">
+            {TABS.map(({ value, label, short, align, Icon }) => (
+              <TabsTrigger key={value} value={value} className={`${TAB_TRIGGER_CLASS} ${align}`}>
                 <Icon className="h-4 w-4 shrink-0" />
-                <span className="hidden min-[420px]:inline truncate">{label}</span>
-                <span className="min-[420px]:hidden truncate">{short}</span>
+                <span className="hidden sm:inline truncate">{label}</span>
+                <span className="sm:hidden truncate">{short}</span>
               </TabsTrigger>
             ))}
           </TabsList>

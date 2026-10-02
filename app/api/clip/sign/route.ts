@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { MAX_FILE_SIZE } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -40,15 +41,24 @@ export async function POST(req: Request) {
     }
 
     let filename = "";
+    let size: unknown = undefined;
     try {
       const body = await req.json();
       filename = typeof body?.filename === "string" ? body.filename : "";
+      size = body?.size;
     } catch {
       return NextResponse.json({ message: "Invalid request body." }, { status: 400 });
     }
 
     if (!filename || filename.length > 255) {
       return NextResponse.json({ message: "Invalid filename." }, { status: 400 });
+    }
+
+    if (typeof size === "number" && size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { message: `Each file must be under ${MAX_FILE_SIZE / (1024 * 1024)}MB.` },
+        { status: 400 }
+      );
     }
 
     const ext = filename.split(".").pop()?.toLowerCase() || "";

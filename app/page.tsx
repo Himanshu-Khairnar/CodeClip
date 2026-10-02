@@ -16,7 +16,7 @@ import { Panel, Field } from "@/components/panel";
 import { CopyRow } from "@/components/code-badge";
 import { formatBytes } from "@/lib/format";
 import { compressImage, isCompressibleImage, COMPRESS_SKIP_UNDER } from "@/lib/compress";
-import { MAX_TOTAL_SIZE } from "@/lib/limits";
+import { MAX_TOTAL_SIZE, MAX_FILE_SIZE } from "@/lib/limits";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -29,13 +29,13 @@ const EXPIRY_OPTIONS = [
 ];
 
 const TABS = [
-  { value: "create", label: "Create Clip", Icon: UploadCloud },
-  { value: "access", label: "Access Clip", Icon: KeyRound },
-  { value: "history", label: "History", Icon: History },
+  { value: "create", label: "Create Clip", short: "Create", Icon: UploadCloud },
+  { value: "access", label: "Access Clip", short: "Access", Icon: KeyRound },
+  { value: "history", label: "History", short: "History", Icon: History },
 ] as const;
 
 const TAB_TRIGGER_CLASS =
-  "flex h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm";
+  "flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm min-[420px]:gap-2 min-[420px]:px-3 min-[420px]:text-xs sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:text-sm";
 
 interface HistoryItem {
   code: string;
@@ -160,6 +160,11 @@ export default function Home() {
   };
 
   const handleFiles = (newFiles: File[]) => {
+    const oversized = newFiles.find((f) => f.size > MAX_FILE_SIZE);
+    if (oversized) {
+      toast.error(`"${oversized.name}" exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB per-file limit`);
+      return;
+    }
     const currentTotalSize = files.reduce((sum, f) => sum + f.size, 0);
     const newTotalSize = newFiles.reduce((sum, f) => sum + f.size, 0);
 
@@ -197,7 +202,7 @@ export default function Home() {
             reject(
               new Error(
                 /too large|maximum is|file size/i.test(message)
-                  ? `"${file.name}" is too large for storage. Cloudinary caps images/raw files at 10MB and videos at 100MB per file on the free plan.`
+                  ? `"${file.name}" exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB per-file limit.`
                   : message
               )
             );
@@ -311,7 +316,7 @@ export default function Home() {
         const signRes = await fetch("/api/clip/sign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: f.name }),
+          body: JSON.stringify({ filename: f.name, size: f.size }),
         });
         if (!signRes.ok) {
           throw new Error("Could not prepare upload. Please try again.");
@@ -428,14 +433,15 @@ export default function Home() {
   const getFileIcon = (name: string) => <FileIcon filename={name} />;
 
   return (
-    <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
-      <div className="w-full max-w-3xl mx-auto">
-        <Tabs defaultValue="create" orientation="vertical" className="flex w-full flex-col gap-3 sm:flex-row sm:items-start">
+    <div className="flex-1 w-full min-w-0 overflow-x-clip px-3 py-4 sm:px-6 sm:py-6">
+      <div className="w-full max-w-3xl mx-auto min-w-0">
+        <Tabs defaultValue="create" orientation="vertical" className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
           <TabsList className="flex w-full shrink-0 flex-row gap-1 rounded-xl border border-border bg-card p-1.5 sm:w-44 sm:flex-col">
-            {TABS.map(({ value, label, Icon }) => (
+            {TABS.map(({ value, label, short, Icon }) => (
               <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
                 <Icon className="h-4 w-4 shrink-0" />
-                <span>{label}</span>
+                <span className="hidden min-[420px]:inline truncate">{label}</span>
+                <span className="min-[420px]:hidden truncate">{short}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -496,11 +502,11 @@ export default function Home() {
 
                 </CardContent>
 
-                <CardFooter className="border-t bg-muted/20 px-4 py-3 flex gap-3">
-                  <Button variant="outline" className="flex-1 h-9" onClick={() => { setCode(""); setFiles([]); setText(""); }}>
+                <CardFooter className="border-t bg-muted/20 px-4 py-3 flex flex-col-reverse min-[400px]:flex-row gap-2 min-[400px]:gap-3">
+                  <Button variant="outline" className="flex-1 h-10 min-[400px]:h-9" onClick={() => { setCode(""); setFiles([]); setText(""); }}>
                     New Clip
                   </Button>
-                  <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 h-9" onClick={handleCloseClip}>
+                  <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 h-10 min-[400px]:h-9 min-[400px]:w-auto w-full" onClick={handleCloseClip}>
                     Delete
                   </Button>
                 </CardFooter>
@@ -508,7 +514,7 @@ export default function Home() {
             ) : (
               <Panel
                 title="Send File"
-                description={`Paste text or upload files (up to ${MAX_TOTAL_MB}MB total).`}
+                description={`Paste text or upload files (max ${MAX_FILE_SIZE / (1024 * 1024)}MB per file, up to ${MAX_TOTAL_MB}MB total).`}
                 className="shadow-md animate-in fade-in slide-in-from-bottom-4"
               >
                   <Field label="Text Content" htmlFor="text" labelClassName="text-sm">
@@ -535,7 +541,7 @@ export default function Home() {
                           <div className="flex flex-1 flex-col items-center justify-center gap-1 p-3 text-center">
                             <UploadCloud className="w-6 h-6 text-muted-foreground" />
                             <p className="font-medium text-[13px]">Click or drag files &amp; folders here</p>
-                            <p className="text-[11px] text-muted-foreground">Any file type up to {MAX_TOTAL_MB}MB · photos auto-compress</p>
+                            <p className="text-[11px] text-muted-foreground">Max {MAX_FILE_SIZE / (1024 * 1024)}MB per file · {MAX_TOTAL_MB}MB total · photos auto-compress</p>
                           </div>
                         ) : (
                           <>
@@ -635,7 +641,7 @@ export default function Home() {
                     id="code"
                     inputMode="numeric"
                     placeholder="0000"
-                    className="text-center text-xl tracking-[0.4em] font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm"
+                    className="text-center text-xl tracking-[0.3em] indent-[0.3em] min-[400px]:tracking-[0.4em] min-[400px]:indent-[0.4em] font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm max-w-full"
                     maxLength={4}
                     value={accessCode}
                     onChange={(e) => setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))}

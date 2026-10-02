@@ -5,7 +5,7 @@ import { encryptText, hashCode } from "@/lib/encryption";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { generateCode } from "@/lib/codes";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
-import { MAX_TOTAL_SIZE } from "@/lib/limits";
+import { MAX_TOTAL_SIZE, MAX_FILE_SIZE } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -38,7 +38,7 @@ function validatePreUploadedFile(
     typeof filename !== "string" || !filename || filename.length > 255 ||
     typeof path !== "string" ||
     !path.startsWith(`https://res.cloudinary.com/${cloudName}/`) ||
-    typeof size !== "number" || !Number.isFinite(size) || size <= 0 || size > MAX_TOTAL_SIZE ||
+    typeof size !== "number" || !Number.isFinite(size) || size <= 0 || size > MAX_FILE_SIZE ||
     typeof key !== "string" || !key ||
     typeof resourceType !== "string" || !VALID_RESOURCE_TYPES.has(resourceType)
   ) {
@@ -96,6 +96,13 @@ export async function POST(req: Request) {
       }
       const savedFiles: PreUploadedFile[] = [];
       for (const f of rawFiles) {
+        const claimedSize = (f as Record<string, unknown>)?.size;
+        if (typeof claimedSize === "number" && claimedSize > MAX_FILE_SIZE) {
+          return NextResponse.json(
+            { message: `Each file must be under ${MAX_FILE_SIZE / (1024 * 1024)}MB.` },
+            { status: 400 }
+          );
+        }
         const valid = validatePreUploadedFile(f, cloudName);
         if (!valid) {
           return NextResponse.json({ message: "Invalid file data." }, { status: 400 });
@@ -147,6 +154,13 @@ export async function POST(req: Request) {
     if (totalSize > MAX_TOTAL_SIZE) {
       return NextResponse.json(
         { message: `Limit exceeded (max ${MAX_TOTAL_SIZE / (1024 * 1024)}MB)` },
+        { status: 400 }
+      );
+    }
+    const oversized = files.find((f) => f.size > MAX_FILE_SIZE);
+    if (oversized) {
+      return NextResponse.json(
+        { message: `"${oversized.name}" exceeds the ${MAX_FILE_SIZE / (1024 * 1024)}MB per-file limit.` },
         { status: 400 }
       );
     }

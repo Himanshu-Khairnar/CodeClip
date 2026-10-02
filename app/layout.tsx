@@ -54,17 +54,16 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <div
-            style={{ position: "fixed", right: "1rem", bottom: "1rem" }}
-            className="z-50 flex flex-col items-center gap-2 sm:gap-3"
+            className="z-50 fixed bottom-3 right-3 sm:bottom-4 sm:right-4 flex flex-row sm:flex-col items-center gap-1.5 sm:gap-3 rounded-full sm:rounded-2xl border border-border bg-card/85 px-2 py-1.5 sm:p-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/70"
           >
             <Image
               src="/logo.svg"
               alt="CodeClip logo"
               width={28}
               height={28}
-              className="h-7 w-7 rounded-md shadow-sm"
+              className="h-6 w-6 sm:h-7 sm:w-7 rounded-md shadow-sm"
             />
-            <div className="flex flex-col items-center font-mono font-bold text-sm text-foreground leading-tight" aria-label="CodeClip">
+            <div className="hidden sm:flex flex-col items-center font-mono font-bold text-sm text-foreground leading-tight" aria-label="CodeClip">
               <span>C</span>
               <span>o</span>
               <span>d</span>
@@ -74,14 +73,14 @@ export default function RootLayout({
               <span>i</span>
               <span>p</span>
             </div>
-            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10" asChild>
+            <Button variant="outline" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 rounded-full sm:rounded-md" asChild>
               <a href="https://github.com/himanshu-khairnar/codeclip" target="_blank" rel="noopener noreferrer" aria-label="GitHub repository">
                 <Github className="h-4 w-4" />
               </a>
             </Button>
-            <ThemeToggle />
+            <ThemeToggle className="h-8 w-8 sm:h-10 sm:w-10 rounded-full sm:rounded-md" />
           </div>
-          <main className="flex-1 flex flex-col">
+          <main className="flex-1 flex flex-col min-w-0 overflow-x-clip pb-16 sm:pb-0">
             {children}
           </main>
           <Toaster />

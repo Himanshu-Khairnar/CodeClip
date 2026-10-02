@@ -262,8 +262,8 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
     if (loading) {
         return (
-            <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
-                <div className="mx-auto w-full max-w-3xl flex flex-col gap-3">
+            <div className="flex-1 w-full min-w-0 overflow-x-clip px-3 py-4 sm:px-6 sm:py-6">
+                <div className="mx-auto w-full max-w-3xl min-w-0 flex flex-col gap-3">
                     <div className="rounded-xl border border-border bg-card p-4 sm:p-5 space-y-4">
                         <Skeleton className="h-8 w-3/4" />
                         <Skeleton className="h-4 w-1/2" />

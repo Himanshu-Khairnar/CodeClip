@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon } from "lucide-react";
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -14,12 +14,13 @@ export function ThemeToggle() {
     return () => clearTimeout(timer);
   }, []);
 
-  if (!mounted) return <Button variant="outline" size="icon" disabled />;
+  if (!mounted) return <Button variant="outline" size="icon" disabled className={className} />;
 
   return (
     <Button
       variant="outline"
       size="icon"
+      className={className}
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
     >
       {theme === "dark" ? (

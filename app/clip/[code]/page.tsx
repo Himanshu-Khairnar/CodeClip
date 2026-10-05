@@ -11,6 +11,7 @@ import {
 import { FileIcon } from "@/components/file-icon";
 import { CodeBadge } from "@/components/code-badge";
 import { formatBytes } from "@/lib/format";
+import { isPdf, isPreviewable, isTextPreview } from "@/lib/file-types";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -245,21 +246,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
 
     const formatSize = formatBytes;
 
-    const isPreviewable = (filename: string, resourceType?: string) => {
-        const ext = filename.split('.').pop()?.toLowerCase() || '';
-        const previewExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'pdf', 'txt', 'md', 'csv', 'json', 'log', 'js', 'ts', 'py', 'html', 'css', 'xml', 'yaml', 'yml'];
-        return previewExts.includes(ext) || resourceType === 'image' || resourceType === 'video';
-    };
-
-    const isTextPreview = (filename: string) => {
-        const ext = filename.split('.').pop()?.toLowerCase() || '';
-        return ['txt', 'md', 'csv', 'json', 'log', 'js', 'ts', 'jsx', 'tsx', 'py', 'html', 'css', 'xml', 'yaml', 'yml'].includes(ext);
-    };
-
-    const isPdfPreview = (filename: string) => filename.toLowerCase().endsWith('.pdf');
-
-
-
     if (loading) {
         return (
             <div className="flex-1 w-full min-w-0 overflow-x-clip px-3 py-4 sm:px-6 sm:py-6">
@@ -474,7 +460,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                     className="w-full max-w-md"
                                                                 />
                                                             )}
-                                                            {isPdfPreview(file.filename) && (
+                                                            {isPdf(file.filename) && (
                                                                 <iframe src={file.path} title={file.filename} className="w-full h-[60vh] sm:h-[500px] rounded-md border border-border bg-white" />
                                                             )}
                                                             {isTextPreview(file.filename) && (
@@ -482,7 +468,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                     {textFilePreviews[file.filename] === undefined ? "Loading preview..." : textFilePreviews[file.filename] || "Empty file"}
                                                                 </div>
                                                             )}
-                                                            {!isImage && !isVideo && !isAudio && !isPdfPreview(file.filename) && !isTextPreview(file.filename) && (
+                                                            {!isImage && !isVideo && !isAudio && !isPdf(file.filename) && !isTextPreview(file.filename) && (
                                                                 <p className="text-sm text-muted-foreground py-4">No preview available for this file type.</p>
                                                             )}
                                                         </div>

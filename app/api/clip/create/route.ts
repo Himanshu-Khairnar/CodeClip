@@ -6,6 +6,7 @@ import { uploadToCloudinary } from "@/lib/cloudinary";
 import { generateCode } from "@/lib/codes";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { MAX_TOTAL_SIZE, MAX_FILE_SIZE } from "@/lib/limits";
+import { buildPublicId, getResourceType } from "@/lib/file-types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -167,31 +168,15 @@ export async function POST(req: Request) {
 
     const savedFiles: { filename: string; path: string; size: number; key: string; resourceType: string }[] = [];
 
-    const imageExtensions = new Set(["jpg", "jpeg", "png", "gif", "webp", "ico", "bmp"]);
-    const videoAudioExtensions = new Set(["mp4", "webm", "mov", "avi", "mkv", "mp3", "wav", "ogg", "m4a", "flac", "aac"]);
-
     const filesToUpload = files.filter((f) => f.name && f.size > 0);
     for (const file of filesToUpload) {
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      let resourceType: "image" | "video" | "raw" = "raw";
-      if (imageExtensions.has(ext)) {
-        resourceType = "image";
-      } else if (videoAudioExtensions.has(ext)) {
-        resourceType = "video";
-      } else {
-        resourceType = "raw";
-      }
-
-      const lastDotIndex = file.name.lastIndexOf(".");
-      const baseName = lastDotIndex !== -1 ? file.name.substring(0, lastDotIndex) : file.name;
-      const sanitizedBase = baseName.replace(/[^a-zA-Z0-9_-]/g, "_");
-      // Note: do NOT append the file extension to the public_id. Cloudinary appends
-      // the format automatically for images/videos, and raw files with an extension
-      // in the public_id are rejected (401 deny/ACL failure) on the delivery URL.
-      const publicId = `${Date.now()}-${sanitizedBase}`;
+      const resourceType = getResourceType(file.name);
+      // Raw assets (PDFs, archives, docs…) must keep the extension in the
+      // public_id so the delivery URL has a format; media assets must not.
+      const publicId = buildPublicId(file.name, Date.now(), resourceType);
 
       let result;
       try {
@@ -205,7 +190,7 @@ export async function POST(req: Request) {
         result = await uploadToCloudinary(buffer, {
           resource_type: "raw",
           folder: "online-clipboard",
-          public_id: publicId,
+          public_id: buildPublicId(file.name, Date.now(), "raw"),
         });
       }
 

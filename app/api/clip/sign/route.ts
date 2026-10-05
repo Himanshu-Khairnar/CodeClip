@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { MAX_FILE_SIZE } from "@/lib/limits";
+import { buildPublicId, getResourceType } from "@/lib/file-types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -13,12 +14,6 @@ cloudinary.config({
 });
 
 const UPLOAD_FOLDER = "online-clipboard";
-
-const imageExtensions = new Set(["jpg", "jpeg", "png", "gif", "webp", "ico", "bmp"]);
-const videoAudioExtensions = new Set([
-  "mp4", "webm", "mov", "avi", "mkv",
-  "mp3", "wav", "ogg", "m4a", "flac", "aac",
-]);
 
 /**
  * Returns signed params for ONE direct browser → Cloudinary upload.
@@ -61,15 +56,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const ext = filename.split(".").pop()?.toLowerCase() || "";
-    let resourceType: "image" | "video" | "raw" = "raw";
-    if (imageExtensions.has(ext)) resourceType = "image";
-    else if (videoAudioExtensions.has(ext)) resourceType = "video";
-
-    const lastDot = filename.lastIndexOf(".");
-    const base = lastDot !== -1 ? filename.slice(0, lastDot) : filename;
-    const sanitized = base.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100) || "file";
-    const publicId = `${Date.now()}-${sanitized}`;
+    const resourceType = getResourceType(filename);
+    // Raw assets (PDFs, archives, docs…) must keep the extension in the
+    // public_id so the delivery URL has a format; media assets must not.
+    const publicId = buildPublicId(filename, Date.now(), resourceType);
 
     const timestamp = Math.floor(Date.now() / 1000);
     const params = {

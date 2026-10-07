@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import {
   UploadCloud, CheckCircle2, ExternalLink, X, Info, Clock, History, Trash2,
-  KeyRound, Loader2, Plus, ArrowRight,
+  KeyRound, Loader2, Plus, ArrowRight, Flame, Lock, Eye, EyeOff, Share2,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { Panel, Field } from "@/components/panel";
@@ -17,21 +17,38 @@ import { CopyRow } from "@/components/code-badge";
 import { CopyButton } from "@/components/copy-button";
 import { Segmented } from "@/components/segmented";
 import { ConfirmButton } from "@/components/confirm-button";
+import { SwitchRow } from "@/components/switch";
+import { loadHistory, removeHistoryItem, saveHistoryItem, type HistoryItem } from "@/lib/history";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
 import { compressImage, isCompressibleImage, COMPRESS_SKIP_UNDER } from "@/lib/compress";
-import { MAX_TOTAL_SIZE, MAX_FILE_SIZE } from "@/lib/limits";
+import {
+  MAX_TOTAL_SIZE, MAX_FILE_SIZE, MAX_TEXT_LENGTH, MAX_PASSWORD_LENGTH,
+  EXPIRY_OPTIONS, DEFAULT_EXPIRY_MINUTES,
+} from "@/lib/limits";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const MAX_TEXT_LENGTH = 500_000;
 const MAX_TOTAL_MB = MAX_TOTAL_SIZE / (1024 * 1024);
 
-const EXPIRY_OPTIONS = [
-  { value: "1", label: "1 hour" },
-  { value: "24", label: "24 hours" },
-] as const;
-type Expiry = (typeof EXPIRY_OPTIONS)[number]["value"];
+const EXPIRY_SEGMENTS = EXPIRY_OPTIONS.map((o) => ({ value: String(o.minutes), label: o.label }));
+const expiryLabel = (minutes: number) =>
+  EXPIRY_OPTIONS.find((o) => o.minutes === minutes)?.label ?? `${minutes} min`;
+
+interface CreateResult {
+  code: string;
+  ownerToken?: string;
+  expiresAt?: string;
+}
+
+interface CreatedClip {
+  code: string;
+  expiryMinutes: number;
+  burnAfterRead: boolean;
+  hasPassword: boolean;
+}
+
+type TabValue = "create" | "access" | "history";
 
 const TABS = [
   { value: "create", label: "Create Clip", short: "Create", align: "max-sm:justify-start!", Icon: UploadCloud },
@@ -42,39 +59,13 @@ const TABS = [
 const TAB_TRIGGER_CLASS =
   "flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.97] hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:gap-2 sm:px-3 sm:text-sm";
 
-interface HistoryItem {
-  code: string;
-  url: string;
-  textSnippet: string;
-  fileCount: number;
-  createdAt: number;
-}
-
-const HISTORY_KEY = "codeclip-history";
-
-function loadHistory(): HistoryItem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as HistoryItem[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistoryItem(item: HistoryItem) {
-  const history = loadHistory().filter((h) => h.code !== item.code);
-  history.unshift(item);
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 20)));
-  } catch {
-    // storage full — ignore
-  }
-}
-
 export default function Home() {
   const [text, setText] = useState("");
-  const [expiry, setExpiry] = useState<Expiry>("24");
+  const [expiry, setExpiry] = useState(String(DEFAULT_EXPIRY_MINUTES));
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [burnAfterRead, setBurnAfterRead] = useState(false);
+  const [tab, setTab] = useState<TabValue>("create");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -83,6 +74,8 @@ export default function Home() {
   const [uploadStatus, setUploadStatus] = useState("");
 
   const [code, setCode] = useState("");
+  const [created, setCreated] = useState<CreatedClip | null>(null);
+  const [canShare, setCanShare] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
 
@@ -91,6 +84,7 @@ export default function Home() {
   const [shakeKey, setShakeKey] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const accessInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   // Stable per-File keys so removing a row doesn't re-animate its siblings.
@@ -106,6 +100,15 @@ export default function Home() {
 
   useEffect(() => {
     setHistory(loadHistory());
+    setCanShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
+  }, []);
+
+  // Keyboard shortcuts: Ctrl/⌘+Enter creates, "/" jumps to the access code.
+  const shortcutRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => shortcutRef.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const openClip = (value: string) => {
@@ -262,7 +265,7 @@ export default function Home() {
   };
 
   /** Legacy path: small payloads proxied through our own API. */
-  const createViaServer = (formData: FormData): Promise<string> => {
+  const createViaServer = (formData: FormData): Promise<CreateResult> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/clip/create");
@@ -275,7 +278,7 @@ export default function Home() {
         try {
           const data = JSON.parse(xhr.responseText);
           if (xhr.status >= 200 && xhr.status < 300 && data?.code) {
-            resolve(data.code as string);
+            resolve(data as CreateResult);
           } else {
             reject(new Error(typeof data?.message === "string" ? data.message : "Something went wrong during upload."));
           }
@@ -293,9 +296,16 @@ export default function Home() {
     });
   };
 
-  const finishCreate = async (generatedCode: string) => {
+  const finishCreate = async (result: CreateResult) => {
+    const generatedCode = result.code;
     setProgress(100);
     setCode(generatedCode);
+    setCreated({
+      code: generatedCode,
+      expiryMinutes: Number(expiry),
+      burnAfterRead,
+      hasPassword: !!password,
+    });
 
     const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
     // Lazy-load the QR generator so it isn't part of the initial bundle.
@@ -309,6 +319,10 @@ export default function Home() {
       textSnippet: text.trim().slice(0, 80),
       fileCount: files.length,
       createdAt: Date.now(),
+      expiresAt: result.expiresAt ? new Date(result.expiresAt).getTime() : Date.now() + Number(expiry) * 60_000,
+      ownerToken: result.ownerToken,
+      burnAfterRead,
+      hasPassword: !!password,
     });
     setHistory(loadHistory());
 
@@ -396,10 +410,11 @@ export default function Home() {
           setUploadStatus("Retrying via server…");
           const formData = new FormData();
           formData.append("text", text);
-          formData.append("expiry", expiry);
+          formData.append("expiryMinutes", expiry);
+          formData.append("password", password);
+          formData.append("burnAfterRead", String(burnAfterRead));
           for (const file of prepared) formData.append("files", file);
-          const code = await createViaServer(formData);
-          await finishCreate(code);
+          await finishCreate(await createViaServer(formData));
           return;
         }
       }
@@ -412,11 +427,13 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          expiry,
+          expiryMinutes: Number(expiry),
+          password,
+          burnAfterRead,
           files: uploaded,
         }),
       });
-      let data: { code?: string; message?: string } | null = null;
+      let data: (CreateResult & { message?: string }) | null = null;
       try {
         data = await res.json();
       } catch {
@@ -425,7 +442,7 @@ export default function Home() {
       if (!res.ok || !data?.code) {
         throw new Error(data?.message || "Something went wrong during upload.");
       }
-      await finishCreate(data.code);
+      await finishCreate(data);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong during upload.");
     } finally {
@@ -435,35 +452,58 @@ export default function Home() {
     }
   };
 
+  const resetForm = () => {
+    setCode("");
+    setCreated(null);
+    setFiles([]);
+    setText("");
+    setPassword("");
+    setBurnAfterRead(false);
+  };
+
   const handleCloseClip = async () => {
     if (!code) return;
+    const token = loadHistory().find((h) => h.code === code)?.ownerToken;
     try {
-      await fetch(`/api/clip/${code}`, { method: "DELETE" });
-      toast.info("Clip has been closed and deleted.");
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setCode("");
-      setFiles([]);
-      setText("");
-      const next = loadHistory().filter((h) => h.code !== code);
-      try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
-      } catch {
-        // ignore
+      const res = await fetch(`/api/clip/${code}`, {
+        method: "DELETE",
+        headers: token ? { "x-owner-token": token } : {},
+      });
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || "Couldn't delete the clip.");
       }
-      setHistory(next);
+      toast.info("Clip has been closed and deleted.");
+      setHistory(removeHistoryItem(code));
+      resetForm();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't delete the clip.");
     }
   };
 
   const removeFromHistory = (code: string) => {
-    const next = loadHistory().filter((h) => h.code !== code);
+    setHistory(removeHistoryItem(code));
+  };
+
+  const handleShare = async () => {
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      await navigator.share({ title: "CodeClip", text: `Open my clip with code ${code}`, url: clipUrl });
     } catch {
-      // ignore
+      // user dismissed the share sheet
     }
-    setHistory(next);
+  };
+
+  shortcutRef.current = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    const typing = !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && tab === "create" && !code && !uploading) {
+      e.preventDefault();
+      handleUpload();
+    } else if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      setTab("access");
+      requestAnimationFrame(() => accessInputRef.current?.focus());
+    }
   };
 
   const clipUrl = code ? `${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}` : "";
@@ -471,7 +511,7 @@ export default function Home() {
   return (
     <div className="flex-1 w-full min-w-0 overflow-x-clip px-3 py-4 sm:px-6 sm:py-6">
       <div className="w-full max-w-3xl mx-auto min-w-0">
-        <Tabs defaultValue="create" orientation="vertical" className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)} orientation="vertical" className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
           <TabsList className="flex h-auto! w-full shrink-0 flex-row max-sm:flex-row! gap-1 rounded-xl border border-border bg-card p-1.5 sm:w-44 sm:flex-col">
             {TABS.map(({ value, label, short, align, Icon }) => (
               <TabsTrigger key={value} value={value} className={`${TAB_TRIGGER_CLASS} ${align}`}>
@@ -527,19 +567,28 @@ export default function Home() {
                       <div className="rounded-lg bg-muted/40 border border-border p-2.5 flex items-center gap-2.5">
                         <Info className="w-4 h-4 text-primary shrink-0" />
                         <p className="text-xs text-muted-foreground leading-snug">
-                          Expires in {EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}
+                          Expires in {expiryLabel(created?.expiryMinutes ?? Number(expiry))}
+                          {created?.burnAfterRead && " · self-destructs after the first view"}
+                          {created?.hasPassword && " · password protected"}
                         </p>
                       </div>
-                      <Button className="group w-full h-10 sm:h-9 text-sm" onClick={() => router.push(`/clip/${code}`)}>
-                        <ExternalLink className="w-4 h-4 mr-2 transition-transform duration-200 ease-out group-hover:-translate-y-px group-hover:translate-x-px" /> View Clip
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button className="group flex-1 h-10 sm:h-9 text-sm" onClick={() => router.push(`/clip/${code}`)}>
+                          <ExternalLink className="w-4 h-4 transition-transform duration-200 ease-out group-hover:-translate-y-px group-hover:translate-x-px" /> View Clip
+                        </Button>
+                        {canShare && (
+                          <Button variant="outline" className="h-10 sm:h-9" onClick={handleShare} title="Share">
+                            <Share2 className="w-4 h-4" /> <span className="max-[400px]:sr-only">Share</span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
                 </CardContent>
 
                 <CardFooter className="border-t bg-muted/20 px-4 py-3 flex flex-col-reverse min-[400px]:flex-row gap-2 min-[400px]:gap-3">
-                  <Button variant="outline" className="flex-1 h-10 min-[400px]:h-9" onClick={() => { setCode(""); setFiles([]); setText(""); }}>
+                  <Button variant="outline" className="flex-1 h-10 min-[400px]:h-9" onClick={resetForm}>
                     New Clip
                   </Button>
                   <ConfirmButton
@@ -671,12 +720,49 @@ export default function Home() {
                   >
                     <Segmented
                       ariaLabel="Expiry"
-                      options={EXPIRY_OPTIONS}
+                      options={EXPIRY_SEGMENTS}
                       value={expiry}
                       onChange={setExpiry}
-                      itemClassName="h-8"
+                      itemClassName="h-8 px-1"
                     />
                   </Field>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <SwitchRow
+                      checked={burnAfterRead}
+                      onChange={setBurnAfterRead}
+                      icon={<Flame className="w-4 h-4" />}
+                      label="Self-destruct"
+                      description="Gone after the first view"
+                    />
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 rounded-md border px-3 transition-[border-color,background-color] duration-150 focus-within:ring-[3px] focus-within:ring-ring/50",
+                        password ? "border-primary/40 bg-primary/5" : "border-border"
+                      )}
+                    >
+                      <Lock className={cn("w-4 h-4 shrink-0 transition-colors", password ? "text-primary" : "text-muted-foreground")} />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value.slice(0, MAX_PASSWORD_LENGTH))}
+                        placeholder="Password (optional)"
+                        autoComplete="new-password"
+                        aria-label="Optional password"
+                        className="h-11 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+                      />
+                      {password && (
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="shrink-0 rounded p-0.5 text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-90 animate-fade"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
                   <Button
                     key={shakeKey}
@@ -691,6 +777,7 @@ export default function Home() {
                     ) : (
                       <>
                         Create Clipboard
+                        <kbd className="hidden sm:inline-flex items-center rounded border border-primary-foreground/30 px-1 font-mono text-[10px] opacity-70">Ctrl ↵</kbd>
                         <ArrowRight className="w-4 h-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
                       </>
                     )}
@@ -713,13 +800,14 @@ export default function Home() {
           <TabsContent value="access" className="mt-0 animate-rise">
             <Panel
               title="Access Clip"
-              description="Enter the 4-digit code to open shared content."
+              description={<>Enter the 4-digit code to open shared content. Press <kbd className="rounded border border-border px-1 font-mono text-[10px]">/</kbd> anywhere to jump here.</>}
               className="animate-in fade-in"
             >
               <form onSubmit={handleAccess} className="space-y-3">
                 <Field label="Access Code" htmlFor="code">
                   <Input
                     id="code"
+                    ref={accessInputRef}
                     inputMode="numeric"
                     placeholder="0000"
                     className="text-center text-xl tracking-[0.3em] indent-[0.3em] min-[400px]:tracking-[0.4em] min-[400px]:indent-[0.4em] font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm max-w-full"
@@ -775,9 +863,14 @@ export default function Home() {
                           </span>
                         </div>
                         {item.textSnippet && <p className="text-xs text-muted-foreground truncate mt-0.5 pr-1">{item.textSnippet}</p>}
-                        {item.fileCount > 0 && (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">{item.fileCount} file(s)</p>
-                        )}
+                        <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground mt-0.5">
+                          {item.fileCount > 0 && <span>{item.fileCount} file(s)</span>}
+                          {item.expiresAt && (
+                            <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(item.expiresAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                          )}
+                          {item.burnAfterRead && <span className="inline-flex items-center gap-1 text-orange-500"><Flame className="w-3 h-3" /> Self-destruct</span>}
+                          {item.hasPassword && <span className="inline-flex items-center gap-1"><Lock className="w-3 h-3" /> Password</span>}
+                        </div>
                       </button>
                       <div className="flex items-center gap-1 shrink-0">
                         <CopyButton value={item.code} successMessage="Code copied!" title="Copy code" className="h-8 w-8" />

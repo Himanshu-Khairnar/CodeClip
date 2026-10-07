@@ -256,3 +256,30 @@
     scrollbar-color: var(--border) transparent;
   }
 }
+/* Syntax highlighting (highlight.js / rehype-highlight) — themed via tokens. */
+:root {
+  --hl-keyword: hsl(330 75% 45%);
+  --hl-string: hsl(140 55% 32%);
+  --hl-number: hsl(24 90% 42%);
+  --hl-title: hsl(220 75% 48%);
+  --hl-attr: hsl(260 55% 50%);
+  --hl-comment: hsl(0 0% 50%);
+}
+
+.dark {
+  --hl-keyword: hsl(330 80% 72%);
+  --hl-string: hsl(140 50% 65%);
+  --hl-number: hsl(30 95% 65%);
+  --hl-title: hsl(215 90% 72%);
+  --hl-attr: hsl(260 80% 78%);
+  --hl-comment: hsl(0 0% 55%);
+}
+
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-literal, .hljs-doctag { color: var(--hl-keyword); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-template-tag { color: var(--hl-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-variable, .hljs-template-variable { color: var(--hl-number); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { color: var(--hl-title); }
+.hljs-attr, .hljs-attribute, .hljs-type, .hljs-params, .hljs-property, .hljs-meta { color: var(--hl-attr); }
+.hljs-comment, .hljs-quote, .hljs-deletion { color: var(--hl-comment); font-style: italic; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }

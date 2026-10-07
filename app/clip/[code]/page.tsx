@@ -1,29 +1,35 @@
 "use client";
 
-import { useState, useEffect, use, useCallback } from "react";
+import { useState, useEffect, use, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
   Download, AlertTriangle, ArrowLeft, FileArchive, FileCode,
-  Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2
+  Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2, Lock, Flame, Pencil, BarChart3, Maximize2,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { CodeBadge } from "@/components/code-badge";
 import { CopyButton } from "@/components/copy-button";
 import { Segmented } from "@/components/segmented";
 import { ConfirmButton } from "@/components/confirm-button";
+import { CodeView, languageForFilename } from "@/components/code-view";
+import { Lightbox } from "@/components/lightbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { ownerHeaders, removeHistoryItem } from "@/lib/history";
+import { MAX_TEXT_LENGTH } from "@/lib/limits";
 import { formatBytes } from "@/lib/format";
 import { isPdf, isPreviewable, isTextPreview } from "@/lib/file-types";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
-import remarkGfm from "remark-gfm";
 
-// Split the markdown renderer out of the initial viewer bundle —
-// it's only needed when a clip actually contains text.
-const ReactMarkdown = dynamic(() => import("react-markdown"), {
+// Split the markdown renderer (and its highlighter) out of the initial
+// viewer bundle — it's only needed when a clip actually contains text.
+const Markdown = dynamic(() => import("@/components/markdown"), {
   ssr: false,
   loading: () => <p className="text-sm text-muted-foreground py-4">Loading preview…</p>,
 });
@@ -42,7 +48,20 @@ interface ClipData {
     files: ClipFile[];
     createdAt?: string;
     expiresAt?: string;
+    isOwner?: boolean;
+    burnAfterRead?: boolean;
+    burnedAt?: string | null;
+    hasPassword?: boolean;
+    views?: number;
+    lastViewedAt?: string | null;
 }
+
+type TextView = "preview" | "code" | "raw";
+const TEXT_VIEWS = [
+    { value: "preview", label: "Preview" },
+    { value: "code", label: "Code" },
+    { value: "raw", label: "Raw" },
+] as const;
 
 export default function ClipPage({ params }: { params: Promise<{ code: string }> }) {
     const unwrappedParams = use(params);
@@ -55,52 +74,116 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [downloadingMap, setDownloadingMap] = useState<Record<string, boolean>>({});
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [previewFileIndex, setPreviewFileIndex] = useState<number | null>(null);
-    const [textView, setTextView] = useState<"raw" | "preview">("preview");
-    const TEXT_VIEWS = [
-        { value: "preview", label: "Preview" },
-        { value: "raw", label: "Raw" },
-    ] as const;
+    const [textView, setTextView] = useState<TextView>("preview");
     const [textFilePreviews, setTextFilePreviews] = useState<Record<string, string>>({});
 
-    const [timeLeft, setTimeLeft] = useState<{ h: number; m: number; s: number } | null>(null);
+    const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number } | null>(null);
     const [deletingFile, setDeletingFile] = useState<string | null>(null);
+
+    // Password-protected clips
+    const [needsPassword, setNeedsPassword] = useState(false);
+    const [password, setPassword] = useState("");
+    const [passwordError, setPasswordError] = useState("");
+    const [unlocking, setUnlocking] = useState(false);
+    const [shakeKey, setShakeKey] = useState(0);
+    const passwordRef = useRef("");
+
+    // Owner editing
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState("");
+    const [saving, setSaving] = useState(false);
+
+    const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+    const router = useRouter();
+
+    /** Owner token + unlocked password, sent with every clip request. */
+    const authHeaders = useCallback((): Record<string, string> => {
+        const headers = ownerHeaders(code);
+        if (passwordRef.current) headers["x-clip-password"] = encodeURIComponent(passwordRef.current);
+        return headers;
+    }, [code]);
 
     const fetchClip = useCallback(async () => {
         try {
-            setLoading(true);
+            const res = await fetch(`/api/clip/${code}`, { headers: authHeaders(), cache: "no-store" });
+            const resData = await res.json().catch(() => ({}));
 
-            const res = await fetch(`/api/clip/${code}`);
-            const resData = await res.json();
-
-            if (!res.ok) {
-                setError(resData.message || "Clip not found or expired.");
-                // Clip is gone on the server (deleted/expired) — drop it
-                // from this device's local history so it doesn't linger.
-                if (res.status === 404 || res.status === 410) {
-                    try {
-                        const raw = localStorage.getItem("codeclip-history");
-                        if (raw) {
-                            const next = (JSON.parse(raw) as { code: string }[]).filter(
-                                (h) => h.code !== code
-                            );
-                            localStorage.setItem("codeclip-history", JSON.stringify(next));
-                        }
-                    } catch {
-                        // ignore
-                    }
+            if (res.status === 401 && resData.passwordRequired) {
+                setNeedsPassword(true);
+                if (passwordRef.current) {
+                    setPasswordError(resData.message || "Incorrect password.");
+                    setShakeKey((k) => k + 1);
                 }
-                setLoading(false);
                 return;
             }
 
+            if (!res.ok) {
+                setNeedsPassword(false);
+                setError(resData.message || "Clip not found or expired.");
+                // Clip is gone on the server (deleted/expired) — drop it
+                // from this device's local history so it doesn't linger.
+                if (res.status === 404 || res.status === 410) removeHistoryItem(code);
+                return;
+            }
+
+            setNeedsPassword(false);
+            setPasswordError("");
             setData(resData);
-            setLoading(false);
         } catch (err) {
             console.error(err);
             setError("Clip not found or expired.");
+        } finally {
             setLoading(false);
         }
-    }, [code]);
+    }, [code, authHeaders]);
+
+    const handleUnlock = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!password) return;
+        passwordRef.current = password;
+        setUnlocking(true);
+        setPasswordError("");
+        await fetchClip();
+        setUnlocking(false);
+    };
+
+    const startEditing = () => {
+        setDraft(data?.text || "");
+        setEditing(true);
+    };
+
+    const saveEdit = async () => {
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/clip/${code}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify({ text: draft }),
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.message || "Couldn't save changes");
+            setData((prev) => (prev ? { ...prev, text: draft } : prev));
+            setEditing(false);
+            toast.success("Clip updated");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Couldn't save changes");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const deleteClip = async () => {
+        try {
+            const res = await fetch(`/api/clip/${code}`, { method: "DELETE", headers: authHeaders() });
+            const body = await res.json().catch(() => null);
+            if (!res.ok && res.status !== 404) throw new Error(body?.message || "Couldn't delete the clip");
+            removeHistoryItem(code);
+            toast.info("Clip deleted");
+            router.push("/");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Couldn't delete the clip");
+        }
+    };
 
     useEffect(() => {
         if (code) {
@@ -115,11 +198,12 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         const update = () => {
             const diff = expiresAtTime - Date.now();
             if (diff <= 0) {
-                setTimeLeft({ h: 0, m: 0, s: 0 });
+                setTimeLeft({ d: 0, h: 0, m: 0, s: 0 });
                 return;
             }
             setTimeLeft({
-                h: Math.floor(diff / 3600000),
+                d: Math.floor(diff / 86400000),
+                h: Math.floor((diff % 86400000) / 3600000),
                 m: Math.floor((diff % 3600000) / 60000),
                 s: Math.floor((diff % 60000) / 1000),
             });
@@ -197,12 +281,16 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         }
         setDeletingFile(filename);
         try {
-            const res = await fetch(`/api/clip/${code}/file?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+            const res = await fetch(`/api/clip/${code}/file?key=${encodeURIComponent(key)}`, { method: "DELETE", headers: authHeaders() });
             const body = await res.json().catch(() => null);
             if (!res.ok) throw new Error(body?.message || "Delete failed");
             setData(prev => prev ? ({ ...prev, files: prev.files.filter(f => f.key !== key) }) : prev);
             toast.success(`Deleted ${filename}`);
             setPreviewFileIndex(null);
+            if (!data.text?.trim() && data.files.length <= 1) {
+                // The server keeps an empty clip around; nothing left worth showing.
+                toast.info("That was the last file in this clip.");
+            }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : "Delete failed");
         } finally {
@@ -215,7 +303,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         setDownloadingAll(true);
 
         try {
-            const res = await fetch(`/api/clip/${code}/zip`);
+            const res = await fetch(`/api/clip/${code}/zip`, { headers: authHeaders() });
             if (!res.ok) {
                 const body = await res.json().catch(() => null);
                 throw new Error(body?.message || "ZIP download failed");
@@ -255,6 +343,49 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                         <Skeleton className="h-32 w-full" />
                         <Skeleton className="h-10 w-full" />
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (needsPassword && !data) {
+        return (
+            <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
+                <div className="mx-auto w-full max-w-3xl flex flex-col gap-3">
+                    <Card className="w-full max-w-sm mx-auto shadow-md rounded-xl animate-rise">
+                        <CardHeader className="text-center">
+                            <div className="w-12 h-12 mx-auto mb-1 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center animate-pop">
+                                <Lock className="w-5 h-5 text-primary" />
+                            </div>
+                            <CardTitle className="text-lg">Password required</CardTitle>
+                            <CardDescription>Clip <span className="font-mono font-semibold text-foreground">{code}</span> is protected. Enter its password to open it.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <form onSubmit={handleUnlock} className="space-y-3">
+                                <div key={shakeKey} className={shakeKey > 0 ? "animate-shake" : undefined}>
+                                    <Input
+                                        type="password"
+                                        autoFocus
+                                        value={password}
+                                        onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
+                                        placeholder="Password"
+                                        aria-invalid={!!passwordError}
+                                        className="h-10"
+                                    />
+                                </div>
+                                {passwordError && <p className="text-xs text-destructive animate-fade">{passwordError}</p>}
+                                <Button type="submit" className="w-full h-10" disabled={!password || unlocking}>
+                                    {unlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                                    {unlocking ? "Unlocking…" : "Unlock"}
+                                </Button>
+                            </form>
+                        </CardContent>
+                        <CardFooter className="justify-center">
+                            <Button variant="ghost" size="sm" asChild>
+                                <Link href="/"><ArrowLeft className="w-4 h-4" /> Back to Home</Link>
+                            </Button>
+                        </CardFooter>
+                    </Card>
                 </div>
             </div>
         );
@@ -303,16 +434,80 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                 </span>
                             )}
                             {data.expiresAt && timeLeft && (
-                                <span className={`flex items-center gap-1.5 font-mono tabular-nums transition-colors duration-300 ${timeLeft.h === 0 && timeLeft.m < 10 ? "text-destructive font-semibold" : ""}`}>
-                                    <Clock className={`w-3.5 h-3.5 shrink-0 ${timeLeft.h === 0 && timeLeft.m < 1 ? "animate-pulse" : ""}`} />
-                                    {timeLeft.h + timeLeft.m + timeLeft.s === 0
+                                <span className={`flex items-center gap-1.5 font-mono tabular-nums transition-colors duration-300 ${timeLeft.d === 0 && timeLeft.h === 0 && timeLeft.m < 10 ? "text-destructive font-semibold" : ""}`}>
+                                    <Clock className={`w-3.5 h-3.5 shrink-0 ${timeLeft.d === 0 && timeLeft.h === 0 && timeLeft.m < 1 ? "animate-pulse" : ""}`} />
+                                    {timeLeft.d + timeLeft.h + timeLeft.m + timeLeft.s === 0
                                         ? "Expired"
-                                        : `Expires in ${timeLeft.h}h ${String(timeLeft.m).padStart(2, "0")}m ${String(timeLeft.s).padStart(2, "0")}s`}
+                                        : `Expires in ${timeLeft.d > 0 ? `${timeLeft.d}d ` : ""}${timeLeft.h}h ${String(timeLeft.m).padStart(2, "0")}m ${String(timeLeft.s).padStart(2, "0")}s`}
                                 </span>
+                            )}
+                            <span className="flex items-center gap-1.5" title={data.lastViewedAt ? `Last opened ${format(new Date(data.lastViewedAt), "MMM d 'at' h:mm a")}` : undefined}>
+                                <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+                                {data.views ?? 0} view{data.views === 1 ? "" : "s"}
+                                {data.lastViewedAt && <span className="hidden sm:inline">· last {format(new Date(data.lastViewedAt), "MMM d, h:mm a")}</span>}
+                            </span>
+                            {data.hasPassword && (
+                                <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 shrink-0" /> Password</span>
                             )}
                         </div>
 
-                        {data.text && (
+                        {data.burnAfterRead && (
+                            <div className="flex items-start gap-2.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2.5 text-xs animate-rise">
+                                <Flame className="w-4 h-4 shrink-0 text-orange-500 mt-px" />
+                                <p className="leading-snug">
+                                    {data.isOwner
+                                        ? data.burnedAt
+                                            ? "This clip has been opened and is self-destructing. Others can no longer open it."
+                                            : "Self-destruct is on: the first person to open this clip will be the only one who can see it."
+                                        : "This clip self-destructed when you opened it. It can't be opened again, and its files stay downloadable for about 10 minutes, so save what you need now."}
+                                </p>
+                            </div>
+                        )}
+
+                        {data.isOwner && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border px-3 py-2 animate-rise">
+                                <p className="text-xs text-muted-foreground">You created this clip on this device.</p>
+                                <div className="flex items-center gap-1.5">
+                                    {!editing && (
+                                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={startEditing}>
+                                            <Pencil className="w-3.5 h-3.5" /> {data.text ? "Edit text" : "Add text"}
+                                        </Button>
+                                    )}
+                                    <ConfirmButton onConfirm={deleteClip} confirmLabel="Delete clip?" className="h-8 text-xs">
+                                        <Trash2 className="w-3.5 h-3.5" /> Delete clip
+                                    </ConfirmButton>
+                                </div>
+                            </div>
+                        )}
+
+                        {editing && (
+                            <Card className="border-primary/40 shadow-sm rounded-xl overflow-hidden animate-rise">
+                                <CardContent className="p-3 sm:p-4 space-y-2">
+                                    <Textarea
+                                        autoFocus
+                                        value={draft}
+                                        maxLength={MAX_TEXT_LENGTH}
+                                        onChange={(e) => setDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); saveEdit(); }
+                                            if (e.key === "Escape") setEditing(false);
+                                        }}
+                                        className="min-h-40 max-h-[60vh] font-mono text-sm"
+                                    />
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[11px] text-muted-foreground tabular-nums">{draft.length.toLocaleString("en-US")} chars · Ctrl+Enter to save, Esc to cancel</span>
+                                        <div className="flex gap-1.5">
+                                            <Button variant="ghost" size="sm" className="h-8" onClick={() => setEditing(false)} disabled={saving}>Cancel</Button>
+                                            <Button size="sm" className="h-8" onClick={saveEdit} disabled={saving || draft === (data.text || "")}>
+                                                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {data.text && !editing && (
                             <Card className="border-border shadow-sm rounded-xl overflow-hidden">
                                 <CardHeader className="pb-3 border-b bg-muted/30 px-4 sm:px-6">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -325,7 +520,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                 options={TEXT_VIEWS}
                                                 value={textView}
                                                 onChange={setTextView}
-                                                className="w-40"
+                                                className="w-52"
                                                 itemClassName="h-7 text-xs"
                                             />
                                             <Button variant="ghost" size="sm" onClick={downloadTextAsFile} className="h-8 flex-1 sm:flex-none text-xs sm:text-sm">
@@ -345,13 +540,15 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                     </div>
                                 </CardHeader>
                                 <CardContent key={textView} className="pt-4 px-4 sm:px-6 animate-fade">
-                                    {textView === "raw" ? (
+                                    {textView === "code" ? (
+                                        <CodeView code={data.text} className="bg-muted/20 p-3 sm:p-4 rounded-md min-h-[100px] border border-muted/50 max-w-full" />
+                                    ) : textView === "raw" ? (
                                         <pre className="whitespace-pre-wrap break-words font-mono bg-muted/20 p-3 sm:p-4 rounded-md min-h-[100px] border border-muted/50 text-sm sm:text-base selection:bg-primary/20 overflow-x-auto max-w-full">
                                             {data.text}
                                         </pre>
                                     ) : (
                                         <div className="markdown-preview min-h-[100px] border border-muted/50 rounded-md bg-muted/20 p-3 sm:p-4 overflow-x-auto max-w-full text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:mb-2 [&_p]:leading-7 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-1 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_code]:bg-transparent [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[13px] [&_code]:font-mono [&_pre]:bg-transparent [&_pre]:border [&_pre]:border-border [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:my-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_hr]:my-4 [&_hr]:border-border">
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.text || ""}</ReactMarkdown>
+                                            <Markdown>{data.text || ""}</Markdown>
                                         </div>
                                     )}
                                 </CardContent>
@@ -437,7 +634,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                 <span className="hidden sm:inline">{downloadingMap[file.filename] ? "Downloading..." : "Download"}</span>
                                                                 <span className="sm:hidden">Download</span>
                                                             </Button>
-                                                            <ConfirmButton
+                                                            {data.isOwner && <ConfirmButton
                                                                 onConfirm={() => handleDeleteFile(file.filename, file.key)}
                                                                 disabled={deletingFile === file.filename}
                                                                 confirmLabel={<span className="text-xs">Delete?</span>}
@@ -445,19 +642,29 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                 title="Delete file"
                                                             >
                                                                 {deletingFile === file.filename ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                                            </ConfirmButton>
+                                                            </ConfirmButton>}
                                                         </div>
                                                     </div>
 
                                                     {isPreviewing && (
                                                         <div className="border-t border-border bg-muted/20 p-3 sm:p-4 flex justify-center items-center overflow-hidden animate-rise">
                                                             {isImage && (
-                                                                /* eslint-disable-next-line @next/next/no-img-element */
-                                                                <img
-                                                                    src={file.path}
-                                                                    alt={file.filename}
-                                                                    className="max-h-80 max-w-full object-contain rounded-md border border-border shadow-sm"
-                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setLightbox({ src: file.path, alt: file.filename })}
+                                                                    className="group/img relative cursor-zoom-in rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                                                    aria-label={`Open ${file.filename} full screen`}
+                                                                >
+                                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                    <img
+                                                                        src={file.path}
+                                                                        alt={file.filename}
+                                                                        className="max-h-80 max-w-full object-contain rounded-md border border-border shadow-sm transition-transform duration-200 ease-out group-hover/img:scale-[1.01]"
+                                                                    />
+                                                                    <span className="absolute right-2 top-2 rounded-md bg-black/60 p-1.5 text-white opacity-0 transition-opacity duration-150 group-hover/img:opacity-100 group-focus-visible/img:opacity-100">
+                                                                        <Maximize2 className="w-3.5 h-3.5" />
+                                                                    </span>
+                                                                </button>
                                                             )}
                                                             {isVideo && (
                                                                 <video
@@ -477,9 +684,17 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                 <iframe src={file.path} title={file.filename} className="w-full h-[60vh] sm:h-[500px] rounded-md border border-border bg-white" />
                                                             )}
                                                             {isTextPreview(file.filename) && (
-                                                                <div className="w-full max-h-80 overflow-auto bg-muted/30 p-3 rounded-md border border-border font-mono text-xs sm:text-sm whitespace-pre-wrap break-words">
-                                                                    {textFilePreviews[file.filename] === undefined ? "Loading preview..." : textFilePreviews[file.filename] || "Empty file"}
-                                                                </div>
+                                                                textFilePreviews[file.filename] === undefined || !textFilePreviews[file.filename] ? (
+                                                                    <p className="w-full text-center text-sm text-muted-foreground py-4">
+                                                                        {textFilePreviews[file.filename] === undefined ? "Loading preview…" : "Empty file"}
+                                                                    </p>
+                                                                ) : (
+                                                                    <CodeView
+                                                                        code={textFilePreviews[file.filename]}
+                                                                        language={languageForFilename(file.filename)}
+                                                                        className="w-full max-h-80 overflow-auto bg-muted/30 p-3 rounded-md border border-border"
+                                                                    />
+                                                                )
                                                             )}
                                                             {!isImage && !isVideo && !isAudio && !isPdf(file.filename) && !isTextPreview(file.filename) && (
                                                                 <p className="text-sm text-muted-foreground py-4">No preview available for this file type.</p>
@@ -496,6 +711,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                     </section>
                 ) : null}
             </div>
+            {lightbox && <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
         </div>
     );
 }

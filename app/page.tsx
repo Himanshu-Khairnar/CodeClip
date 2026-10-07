@@ -8,12 +8,16 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import {
-  UploadCloud, CheckCircle2, Copy, ExternalLink, X, Info, Clock, History, Trash2,
-  KeyRound,
+  UploadCloud, CheckCircle2, ExternalLink, X, Info, Clock, History, Trash2,
+  KeyRound, Loader2, Plus, ArrowRight,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { Panel, Field } from "@/components/panel";
 import { CopyRow } from "@/components/code-badge";
+import { CopyButton } from "@/components/copy-button";
+import { Segmented } from "@/components/segmented";
+import { ConfirmButton } from "@/components/confirm-button";
+import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
 import { compressImage, isCompressibleImage, COMPRESS_SKIP_UNDER } from "@/lib/compress";
 import { MAX_TOTAL_SIZE, MAX_FILE_SIZE } from "@/lib/limits";
@@ -26,7 +30,8 @@ const MAX_TOTAL_MB = MAX_TOTAL_SIZE / (1024 * 1024);
 const EXPIRY_OPTIONS = [
   { value: "1", label: "1 hour" },
   { value: "24", label: "24 hours" },
-];
+] as const;
+type Expiry = (typeof EXPIRY_OPTIONS)[number]["value"];
 
 const TABS = [
   { value: "create", label: "Create Clip", short: "Create", align: "max-sm:justify-start!", Icon: UploadCloud },
@@ -35,7 +40,7 @@ const TABS = [
 ] as const;
 
 const TAB_TRIGGER_CLASS =
-  "flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:gap-2 sm:px-3 sm:text-sm";
+  "flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.97] hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm sm:h-11 sm:w-full sm:flex-none sm:justify-start sm:gap-2 sm:px-3 sm:text-sm";
 
 interface HistoryItem {
   code: string;
@@ -69,7 +74,7 @@ function saveHistoryItem(item: HistoryItem) {
 
 export default function Home() {
   const [text, setText] = useState("");
-  const [expiry, setExpiry] = useState("24");
+  const [expiry, setExpiry] = useState<Expiry>("24");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -83,18 +88,53 @@ export default function Home() {
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
+  const [shakeKey, setShakeKey] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  // Stable per-File keys so removing a row doesn't re-animate its siblings.
+  const fileIds = useRef(new WeakMap<File, string>());
+  const fileKey = (f: File) => {
+    let id = fileIds.current.get(f);
+    if (!id) {
+      id = Math.random().toString(36).slice(2);
+      fileIds.current.set(f, id);
+    }
+    return id;
+  };
 
   useEffect(() => {
     setHistory(loadHistory());
   }, []);
 
+  const openClip = (value: string) => {
+    if (value.length === 4) router.push(`/clip/${value}`);
+  };
+
   const handleAccess = (e: React.FormEvent) => {
     e.preventDefault();
-    if (accessCode.trim().length > 0) {
-      router.push(`/clip/${accessCode.trim()}`);
-    }
+    openClip(accessCode);
+  };
+
+  const handleAccessChange = (raw: string) => {
+    const next = raw.replace(/\D/g, "").slice(0, 4);
+    setAccessCode(next);
+    // Behave like an OTP field: jump straight in once all 4 digits are in.
+    if (next.length === 4 && accessCode.length < 4) openClip(next);
+  };
+
+  // Paste files/screenshots anywhere on the create panel.
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const pasted = Array.from(e.clipboardData.files);
+    if (pasted.length === 0) return;
+    e.preventDefault();
+    const named = pasted.map((f) =>
+      f.name && f.name !== "image.png"
+        ? f
+        : new File([f], `pasted-${Date.now()}.${f.type.split("/")[1] || "png"}`, { type: f.type })
+    );
+    handleFiles(named);
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -104,6 +144,8 @@ export default function Home() {
 
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    // Ignore leave events fired when moving between the zone's own children.
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
     setIsDragging(false);
   };
 
@@ -175,8 +217,8 @@ export default function Home() {
     setFiles((prev) => [...prev, ...newFiles]);
   };
 
-  const removeFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index));
+  const removeFile = (file: File) => {
+    setFiles((prev) => prev.filter((f) => f !== file));
   };
 
   /** Upload bytes straight to Cloudinary (bypasses the Vercel function limit). */
@@ -276,6 +318,7 @@ export default function Home() {
   const handleUpload = async () => {
     if (!text.trim() && files.length === 0) {
       toast.error("Please add some text or files to upload.");
+      setShakeKey((k) => k + 1);
       return;
     }
 
@@ -392,11 +435,6 @@ export default function Home() {
     }
   };
 
-  const copyToClipboard = (textToCopy: string) => {
-    navigator.clipboard.writeText(textToCopy);
-    toast.success("Copied to clipboard!");
-  };
-
   const handleCloseClip = async () => {
     if (!code) return;
     try {
@@ -430,8 +468,6 @@ export default function Home() {
 
   const clipUrl = code ? `${typeof window !== "undefined" ? window.location.origin : ""}/clip/${code}` : "";
 
-  const getFileIcon = (name: string) => <FileIcon filename={name} />;
-
   return (
     <div className="flex-1 w-full min-w-0 overflow-x-clip px-3 py-4 sm:px-6 sm:py-6">
       <div className="w-full max-w-3xl mx-auto min-w-0">
@@ -456,13 +492,13 @@ export default function Home() {
                   <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 animate-pop">
                     <CheckCircle2 className="w-6 h-6 text-primary" />
                   </div>
-                  <div>
+                  <div className="animate-rise [animation-delay:80ms]">
                     <h2 className="text-lg font-bold tracking-tight">Clip Created!</h2>
                     <p className="text-xs text-muted-foreground mt-0.5">Share the code or scan the QR</p>
                   </div>
                 </div>
 
-                <CardContent className="p-4 space-y-3">
+                <CardContent className="p-4 space-y-3 [&>*]:animate-rise [&>*:nth-child(2)]:[animation-delay:60ms] [&>*:nth-child(3)]:[animation-delay:120ms]">
                   {/* Access code */}
                   <Field label="Access Code" labelClassName="text-[11px] uppercase tracking-wider text-muted-foreground">
                     <CopyRow
@@ -482,7 +518,7 @@ export default function Home() {
                   {/* QR + info - stacks on mobile */}
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch pt-0.5">
                     {qrCodeUrl && (
-                      <div className="p-2 bg-white rounded-lg border border-border shadow-sm shrink-0 self-center sm:self-auto">
+                      <div className="p-2 bg-white rounded-lg border border-border shadow-sm shrink-0 self-center sm:self-auto animate-pop [animation-delay:160ms]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={qrCodeUrl} alt="QR Code" className="w-32 h-32 sm:w-28 sm:h-28" />
                       </div>
@@ -494,8 +530,8 @@ export default function Home() {
                           Expires in {EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label}
                         </p>
                       </div>
-                      <Button className="w-full h-10 sm:h-9 text-sm" onClick={() => router.push(`/clip/${code}`)}>
-                        <ExternalLink className="w-4 h-4 mr-2" /> View Clip
+                      <Button className="group w-full h-10 sm:h-9 text-sm" onClick={() => router.push(`/clip/${code}`)}>
+                        <ExternalLink className="w-4 h-4 mr-2 transition-transform duration-200 ease-out group-hover:-translate-y-px group-hover:translate-x-px" /> View Clip
                       </Button>
                     </div>
                   </div>
@@ -506,9 +542,14 @@ export default function Home() {
                   <Button variant="outline" className="flex-1 h-10 min-[400px]:h-9" onClick={() => { setCode(""); setFiles([]); setText(""); }}>
                     New Clip
                   </Button>
-                  <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 h-10 min-[400px]:h-9 min-[400px]:w-auto w-full" onClick={handleCloseClip}>
-                    Delete
-                  </Button>
+                  <ConfirmButton
+                    size="default"
+                    onConfirm={handleCloseClip}
+                    confirmLabel="Delete for everyone?"
+                    className="h-10 min-[400px]:h-9 min-[400px]:w-auto w-full"
+                  >
+                    <Trash2 className="w-4 h-4" /> Delete
+                  </ConfirmButton>
                 </CardFooter>
               </Card>
             ) : (
@@ -517,6 +558,7 @@ export default function Home() {
                 description={`Paste text or upload files (max ${MAX_FILE_SIZE / (1024 * 1024)}MB per file, up to ${MAX_TOTAL_MB}MB total).`}
                 className="shadow-md animate-in fade-in slide-in-from-bottom-4"
               >
+                <div className="space-y-3" onPaste={handlePaste}>
                   <Field label="Text Content" htmlFor="text" labelClassName="text-sm">
                     <Textarea
                       id="text"
@@ -531,49 +573,82 @@ export default function Home() {
 
                   <Field label="Files" labelClassName="text-sm">
                     <div
-                      className={`border border-dashed rounded-md transition-colors h-40 overflow-hidden flex flex-col ${isDragging ? "border-primary bg-primary/5" : files.length > 0 ? "border-border bg-card" : "border-muted-foreground/40 hover:border-primary/60 cursor-pointer"}`}
+                      role={files.length === 0 ? "button" : undefined}
+                      tabIndex={files.length === 0 ? 0 : undefined}
+                      aria-label={files.length === 0 ? "Choose files to upload" : undefined}
+                      className={cn(
+                        "relative border border-dashed rounded-md h-40 overflow-hidden flex flex-col outline-none transition-[border-color,background-color,transform] duration-200 ease-out focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                        isDragging
+                          ? "border-primary bg-primary/5 scale-[1.01]"
+                          : files.length > 0
+                            ? "border-border bg-card"
+                            : "group/drop border-muted-foreground/40 hover:border-primary/60 hover:bg-primary/[0.02] cursor-pointer"
+                      )}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
                       onClick={() => { if (files.length === 0) fileInputRef.current?.click(); }}
+                      onKeyDown={(e) => {
+                        if (files.length === 0 && (e.key === "Enter" || e.key === " ")) {
+                          e.preventDefault();
+                          fileInputRef.current?.click();
+                        }
+                      }}
                     >
                          {files.length === 0 ? (
                           <div className="flex flex-1 flex-col items-center justify-center gap-1 p-3 text-center">
-                            <UploadCloud className="w-6 h-6 text-muted-foreground" />
-                            <p className="font-medium text-[13px]">Click or drag files &amp; folders here</p>
+                            <UploadCloud
+                              className={cn(
+                                "w-6 h-6 text-muted-foreground transition-[transform,color] duration-200 ease-out group-hover/drop:-translate-y-0.5 group-hover/drop:text-primary",
+                                isDragging && "-translate-y-1 text-primary"
+                              )}
+                            />
+                            <p className="font-medium text-[13px]">{isDragging ? "Drop to add" : "Click, drag, or paste files here"}</p>
                             <p className="text-[11px] text-muted-foreground">Max {MAX_FILE_SIZE / (1024 * 1024)}MB per file · {MAX_TOTAL_MB}MB total · photos auto-compress</p>
                           </div>
                         ) : (
                           <>
-                            <div className="border-b border-border bg-muted/30 px-3 py-2 shrink-0">
-                              <span className="text-xs font-medium text-muted-foreground truncate">Selected Files ({files.length}) · {formatBytes(files.reduce((s, f) => s + f.size, 0))}</span>
+                            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-1.5 shrink-0">
+                              <span className="text-xs font-medium text-muted-foreground truncate tabular-nums">{files.length} file{files.length > 1 ? "s" : ""} · {formatBytes(files.reduce((s, f) => s + f.size, 0))}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button type="button" variant="ghost" size="xs" onClick={() => setFiles([])} className="text-muted-foreground hover:text-destructive">
+                                  Clear
+                                </Button>
+                                <Button type="button" variant="outline" size="xs" onClick={() => fileInputRef.current?.click()}>
+                                  <Plus /> Add more
+                                </Button>
+                              </div>
                             </div>
                             <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1.5">
-                              {files.map((file, i) => {
-                                const formattedSize = formatBytes(file.size);
-
-                                return (
-                                  <div key={i} className="flex items-center justify-between bg-muted/40 px-2.5 py-1.5 rounded-md text-sm border border-border animate-rise" style={{ animationDelay: `${Math.min(i * 30, 180)}ms` }}>
-                                    <div className="flex items-center gap-2.5 overflow-hidden">
-                                      {getFileIcon(file.name)}
-                                      <span className="truncate font-medium text-xs">{file.name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3 shrink-0 ml-2">
-                                      <span className="text-xs text-muted-foreground">{formattedSize}</span>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); removeFile(i); }}
-                                        className="text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded"
-                                        title="Remove file"
-                                      >
-                                        <X className="w-4 h-4" />
-                                      </button>
-                                    </div>
+                              {files.map((file, i) => (
+                                <div key={fileKey(file)} className="flex items-center justify-between bg-muted/40 px-2.5 py-1.5 rounded-md text-sm border border-border transition-colors duration-150 hover:bg-muted/70 animate-rise" style={{ animationDelay: `${Math.min(i * 30, 180)}ms` }}>
+                                  <div className="flex items-center gap-2.5 overflow-hidden">
+                                    <FileIcon filename={file.name} />
+                                    <span className="truncate font-medium text-xs">{file.name}</span>
                                   </div>
-                                );
-                              })}
+                                  <div className="flex items-center gap-3 shrink-0 ml-2">
+                                    <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(file.size)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); removeFile(file); }}
+                                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-[color,background-color,transform] duration-150 ease-out active:scale-90 p-0.5 rounded"
+                                      title="Remove file"
+                                      aria-label={`Remove ${file.name}`}
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </>
+                        )}
+                        {isDragging && files.length > 0 && (
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-[1px] animate-fade">
+                            <p className="flex items-center gap-2 text-[13px] font-medium text-primary">
+                              <UploadCloud className="w-5 h-5" /> Drop to add
+                            </p>
+                          </div>
                         )}
                         <input
                           type="file"
@@ -594,37 +669,43 @@ export default function Home() {
                     }
                     labelClassName="flex items-center gap-1.5 text-sm"
                   >
-                    <div className="grid grid-cols-2 gap-2">
-                      {EXPIRY_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setExpiry(opt.value)}
-                          className={`h-8 rounded-md border text-[13px] font-medium transition-colors ${expiry === opt.value ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-primary/50"}`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
+                    <Segmented
+                      ariaLabel="Expiry"
+                      options={EXPIRY_OPTIONS}
+                      value={expiry}
+                      onChange={setExpiry}
+                      itemClassName="h-8"
+                    />
                   </Field>
 
                   <Button
+                    key={shakeKey}
                     onClick={handleUpload}
                     disabled={uploading}
-                    className="h-9 text-[13px] font-medium rounded-md shadow-sm w-full transition-transform active:scale-[0.98]"
+                    className={cn("group h-9 text-[13px] font-medium rounded-md shadow-sm w-full", shakeKey > 0 && "animate-shake")}
                   >
-                    {uploading ? "Creating..." : "Create Clipboard"}
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Creating…
+                      </>
+                    ) : (
+                      <>
+                        Create Clipboard
+                        <ArrowRight className="w-4 h-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
+                      </>
+                    )}
                   </Button>
 
                   {uploading && (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-sm">
-                        <span>{uploadStatus || "Uploading..."}</span>
-                        <span>{progress}%</span>
+                    <div className="space-y-1.5 animate-rise">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span key={uploadStatus} className="animate-fade">{uploadStatus || "Uploading..."}</span>
+                        <span className="tabular-nums">{progress}%</span>
                       </div>
-                      <Progress value={progress} className="h-2" />
+                      <Progress value={progress} className="h-1.5" />
                     </div>
                   )}
+                </div>
               </Panel>
             )}
           </TabsContent>
@@ -644,12 +725,25 @@ export default function Home() {
                     className="text-center text-xl tracking-[0.3em] indent-[0.3em] min-[400px]:tracking-[0.4em] min-[400px]:indent-[0.4em] font-mono rounded-md border-2 border-border focus-visible:border-primary h-12 shadow-sm max-w-full"
                     maxLength={4}
                     value={accessCode}
-                    onChange={(e) => setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    onChange={(e) => handleAccessChange(e.target.value)}
+                    autoComplete="one-time-code"
                     required
                   />
+                  <div className="flex justify-center gap-1.5 pt-1" aria-hidden>
+                    {[0, 1, 2, 3].map((i) => (
+                      <span
+                        key={i}
+                        className={cn(
+                          "h-1 w-6 rounded-full transition-[background-color,transform] duration-200 ease-out",
+                          i < accessCode.length ? "bg-primary scale-x-100" : "bg-border scale-x-75"
+                        )}
+                      />
+                    ))}
+                  </div>
                 </Field>
-                <Button type="submit" className="w-full h-10 rounded-md shadow-sm transition-transform active:scale-[0.98]" disabled={!accessCode.trim()}>
+                <Button type="submit" className="group w-full h-10 rounded-md shadow-sm" disabled={accessCode.length !== 4}>
                   Access Now
+                  <ArrowRight className="w-4 h-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
                 </Button>
               </form>
             </Panel>
@@ -664,11 +758,16 @@ export default function Home() {
               className="animate-in fade-in"
             >
                 {history.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">No clips created yet on this device.</p>
+                  <div className="flex flex-col items-center gap-2 py-8 text-center animate-fade">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                      <History className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">No clips created yet on this device.</p>
+                  </div>
                 ) : (
                   history.map((item, idx) => (
-                    <div key={item.code} className="flex items-center gap-2 sm:gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5 animate-rise" style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}>
-                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => router.push(`/clip/${item.code}`)}>
+                    <div key={item.code} className="flex items-center gap-2 sm:gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5 transition-[background-color,border-color] duration-150 hover:bg-muted/70 hover:border-primary/30 animate-rise" style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}>
+                      <button type="button" className="flex-1 min-w-0 cursor-pointer text-left rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50" onClick={() => router.push(`/clip/${item.code}`)}>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-mono font-bold text-sm tracking-widest text-primary shrink-0">{item.code}</span>
                           <span className="text-[11px] text-muted-foreground break-all">
@@ -679,11 +778,9 @@ export default function Home() {
                         {item.fileCount > 0 && (
                           <p className="text-[11px] text-muted-foreground mt-0.5">{item.fileCount} file(s)</p>
                         )}
-                      </div>
+                      </button>
                       <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" onClick={() => copyToClipboard(item.code)} title="Copy code" className="h-8 w-8">
-                          <Copy className="w-3.5 h-3.5" />
-                        </Button>
+                        <CopyButton value={item.code} successMessage="Code copied!" title="Copy code" className="h-8 w-8" />
                         <Button variant="ghost" size="icon" onClick={() => removeFromHistory(item.code)} title="Remove from history" className="text-destructive hover:text-destructive h-8 w-8">
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>

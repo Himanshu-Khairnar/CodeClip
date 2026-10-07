@@ -1,14 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Copy } from "lucide-react";
-import { toast } from "sonner";
+import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/utils";
-
-function copyValue(value: string, successMessage: string) {
-  navigator.clipboard.writeText(value);
-  toast.success(successMessage);
-}
 
 interface CodeBadgeProps {
   code: string;
@@ -28,15 +21,12 @@ export function CodeBadge({ code, className, successMessage = "Code copied to cl
       <span className="min-w-0 flex-1 truncate text-center font-mono text-base font-bold tracking-[0.2em] text-primary sm:text-lg sm:tracking-[0.3em]">
         {code}
       </span>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 shrink-0"
+      <CopyButton
+        value={code}
+        successMessage={successMessage}
         title="Copy code"
-        onClick={() => copyValue(code, successMessage)}
-      >
-        <Copy className="h-3.5 w-3.5 text-primary" />
-      </Button>
+        className="h-6 w-6 text-primary"
+      />
     </div>
   );
 }
@@ -69,15 +59,7 @@ export function CopyRow({
       <span className={cn("min-w-0 flex-1 font-mono", truncate ? "truncate" : "break-all", valueClassName)}>
         {value}
       </span>
-      <Button
-        variant="ghost"
-        size="icon"
-        title="Copy"
-        onClick={() => copyValue(value, successMessage)}
-        className={cn("h-7 w-7 shrink-0", buttonClassName)}
-      >
-        <Copy className="h-3.5 w-3.5" />
-      </Button>
+      <CopyButton value={value} successMessage={successMessage} className={cn("h-7 w-7", buttonClassName)} />
     </div>
   );
 }

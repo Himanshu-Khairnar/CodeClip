@@ -4,9 +4,12 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const ICON = "absolute h-4 w-4 transition-[transform,opacity] duration-300 ease-out-strong";
 
 export function ThemeToggle({ className }: { className?: string }) {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -16,18 +19,18 @@ export function ThemeToggle({ className }: { className?: string }) {
 
   if (!mounted) return <Button variant="outline" size="icon" disabled className={className} />;
 
+  const isDark = resolvedTheme === "dark";
+
   return (
     <Button
       variant="outline"
       size="icon"
-      className={className}
-      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      className={cn("relative overflow-hidden", className)}
+      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      onClick={() => setTheme(isDark ? "light" : "dark")}
     >
-      {theme === "dark" ? (
-        <Sun className="h-4 w-4" />
-      ) : (
-        <Moon className="h-4 w-4" />
-      )}
+      <Sun className={cn(ICON, isDark ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-50 opacity-0")} />
+      <Moon className={cn(ICON, isDark ? "rotate-90 scale-50 opacity-0" : "rotate-0 scale-100 opacity-100")} />
     </Button>
   );
 }

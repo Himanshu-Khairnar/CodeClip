@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  Download, Copy, AlertTriangle, ArrowLeft, FileArchive, FileCode,
+  Download, AlertTriangle, ArrowLeft, FileArchive, FileCode,
   Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { CodeBadge } from "@/components/code-badge";
+import { CopyButton } from "@/components/copy-button";
+import { Segmented } from "@/components/segmented";
+import { ConfirmButton } from "@/components/confirm-button";
 import { formatBytes } from "@/lib/format";
 import { isPdf, isPreviewable, isTextPreview } from "@/lib/file-types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,6 +56,10 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [previewFileIndex, setPreviewFileIndex] = useState<number | null>(null);
     const [textView, setTextView] = useState<"raw" | "preview">("preview");
+    const TEXT_VIEWS = [
+        { value: "preview", label: "Preview" },
+        { value: "raw", label: "Raw" },
+    ] as const;
     const [textFilePreviews, setTextFilePreviews] = useState<Record<string, string>>({});
 
     const [timeLeft, setTimeLeft] = useState<{ h: number; m: number; s: number } | null>(null);
@@ -137,13 +144,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         });
     }, [previewFileIndex, data?.files, textFilePreviews]);
 
-    const copyText = () => {
-        if (data?.text) {
-            navigator.clipboard.writeText(data.text);
-            toast.success("Text copied to clipboard!");
-        }
-    };
-
     const downloadTextAsFile = () => {
         if (!data?.text) return;
         const blob = new Blob([data.text], { type: "text/plain;charset=utf-8" });
@@ -195,7 +195,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
             toast.error("Cannot delete this file");
             return;
         }
-        if (!confirm(`Delete "${filename}" permanently?`)) return;
         setDeletingFile(filename);
         try {
             const res = await fetch(`/api/clip/${code}/file?key=${encodeURIComponent(key)}`, { method: "DELETE" });
@@ -265,9 +264,9 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         return (
             <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
                 <div className="mx-auto w-full max-w-3xl flex flex-col gap-3">
-                    <Card className="w-full max-w-md mx-auto border-destructive/50 shadow-md rounded-xl">
+                    <Card className="w-full max-w-md mx-auto border-destructive/50 shadow-md rounded-xl animate-rise">
                         <CardHeader className="text-center">
-                            <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-2" />
+                            <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-2 animate-pop" />
                             <CardTitle className="text-2xl text-destructive">Error</CardTitle>
                             <CardDescription>{error}</CardDescription>
                         </CardHeader>
@@ -304,9 +303,11 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                 </span>
                             )}
                             {data.expiresAt && timeLeft && (
-                                <span className={`flex items-center gap-1.5 font-mono ${timeLeft.h === 0 && timeLeft.m < 10 ? "text-destructive font-semibold" : ""}`}>
-                                    <Clock className="w-3.5 h-3.5 shrink-0" />
-                                    Expires in {timeLeft.h}h {timeLeft.m}m {timeLeft.s}s
+                                <span className={`flex items-center gap-1.5 font-mono tabular-nums transition-colors duration-300 ${timeLeft.h === 0 && timeLeft.m < 10 ? "text-destructive font-semibold" : ""}`}>
+                                    <Clock className={`w-3.5 h-3.5 shrink-0 ${timeLeft.h === 0 && timeLeft.m < 1 ? "animate-pulse" : ""}`} />
+                                    {timeLeft.h + timeLeft.m + timeLeft.s === 0
+                                        ? "Expired"
+                                        : `Expires in ${timeLeft.h}h ${String(timeLeft.m).padStart(2, "0")}m ${String(timeLeft.s).padStart(2, "0")}s`}
                                 </span>
                             )}
                         </div>
@@ -319,20 +320,31 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                             <FileCode className="w-4 h-4 text-primary" /> Text Content
                                         </CardTitle>
                                         <div className="flex gap-2 self-stretch sm:self-auto flex-wrap">
-                                            <div className="flex rounded-md border border-border overflow-hidden">
-                                                <button onClick={() => setTextView("preview")} className={`px-3 py-1.5 text-xs font-medium transition-colors ${textView === "preview" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}>Preview</button>
-                                                <button onClick={() => setTextView("raw")} className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${textView === "raw" ? "bg-primary text-primary-foreground" : "bg-card hover:bg-muted"}`}>Raw</button>
-                                            </div>
+                                            <Segmented
+                                                ariaLabel="Text view"
+                                                options={TEXT_VIEWS}
+                                                value={textView}
+                                                onChange={setTextView}
+                                                className="w-40"
+                                                itemClassName="h-7 text-xs"
+                                            />
                                             <Button variant="ghost" size="sm" onClick={downloadTextAsFile} className="h-8 flex-1 sm:flex-none text-xs sm:text-sm">
                                                 <Download className="w-4 h-4 mr-1 sm:mr-2" /> .txt
                                             </Button>
-                                            <Button variant="ghost" size="sm" onClick={copyText} className="h-8 flex-1 sm:flex-none text-xs sm:text-sm">
-                                                <Copy className="w-4 h-4 mr-1 sm:mr-2" /> Copy
-                                            </Button>
+                                            <CopyButton
+                                                value={data.text}
+                                                successMessage="Text copied to clipboard!"
+                                                size="sm"
+                                                title="Copy text"
+                                                iconClassName="size-4"
+                                                className="h-8 flex-1 sm:flex-none text-xs sm:text-sm"
+                                            >
+                                                Copy
+                                            </CopyButton>
                                         </div>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="pt-4 px-4 sm:px-6">
+                                <CardContent key={textView} className="pt-4 px-4 sm:px-6 animate-fade">
                                     {textView === "raw" ? (
                                         <pre className="whitespace-pre-wrap break-words font-mono bg-muted/20 p-3 sm:p-4 rounded-md min-h-[100px] border border-muted/50 text-sm sm:text-base selection:bg-primary/20 overflow-x-auto max-w-full">
                                             {data.text}
@@ -379,7 +391,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                             const isPreviewing = previewFileIndex === index;
 
                                             return (
-                                                <div key={index} className="rounded-lg border border-border bg-card overflow-hidden transition-colors hover:bg-muted/30">
+                                                <div key={file.key || file.path} className="rounded-lg border border-border bg-card overflow-hidden transition-[background-color,border-color] duration-150 hover:bg-muted/30 hover:border-primary/20 animate-rise" style={{ animationDelay: `${Math.min(index * 40, 200)}ms` }}>
                                                     <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-3.5">
                                                         <div className="flex items-center gap-3 flex-1 min-w-0 w-full">
                                                             <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-md bg-primary/10 flex items-center justify-center">
@@ -404,7 +416,9 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                     onClick={() => setPreviewFileIndex(isPreviewing ? null : index)}
                                                                     className="h-9 sm:h-8 px-3 text-xs flex-1 sm:flex-none"
                                                                 >
-                                                                    {isPreviewing ? <EyeOff className="w-3.5 h-3.5 mr-1.5" /> : <Eye className="w-3.5 h-3.5 mr-1.5" />}
+                                                                    <span key={String(isPreviewing)} className="inline-flex animate-fade">
+                                                                        {isPreviewing ? <EyeOff className="w-3.5 h-3.5 mr-1.5" /> : <Eye className="w-3.5 h-3.5 mr-1.5" />}
+                                                                    </span>
                                                                     {isPreviewing ? "Hide" : "Preview"}
                                                                 </Button>
                                                             )}
@@ -423,21 +437,20 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                                                 <span className="hidden sm:inline">{downloadingMap[file.filename] ? "Downloading..." : "Download"}</span>
                                                                 <span className="sm:hidden">Download</span>
                                                             </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => handleDeleteFile(file.filename, file.key)}
+                                                            <ConfirmButton
+                                                                onConfirm={() => handleDeleteFile(file.filename, file.key)}
                                                                 disabled={deletingFile === file.filename}
-                                                                className="h-9 w-9 sm:h-8 sm:w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                                                confirmLabel={<span className="text-xs">Delete?</span>}
+                                                                className="h-9 min-w-9 sm:h-8 sm:min-w-8 px-2 shrink-0"
                                                                 title="Delete file"
                                                             >
                                                                 {deletingFile === file.filename ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                                            </Button>
+                                                            </ConfirmButton>
                                                         </div>
                                                     </div>
 
                                                     {isPreviewing && (
-                                                        <div className="border-t border-border bg-muted/20 p-3 sm:p-4 flex justify-center items-center overflow-hidden">
+                                                        <div className="border-t border-border bg-muted/20 p-3 sm:p-4 flex justify-center items-center overflow-hidden animate-rise">
                                                             {isImage && (
                                                                 /* eslint-disable-next-line @next/next/no-img-element */
                                                                 <img

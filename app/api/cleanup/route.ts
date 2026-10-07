@@ -1,7 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
-import { deleteFromCloudinary } from "@/lib/cloudinary";
+import { deleteAssets, deleteFromCloudinary, listFolderAssets } from "@/lib/cloudinary";
+import { MAX_CLIP_AGE_MS } from "@/lib/limits";
+
+/** Uploads younger than this may still be on their way into a clip. */
+const ORPHAN_MIN_AGE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Delete Cloudinary assets that no clip references — uploads abandoned
+ * mid-create, or made with a signature that was never used for a clip.
+ */
+async function sweepOrphans(): Promise<{ removed: number; error?: string }> {
+  try {
+    const referenced = new Set<string>(await Clip.distinct("files.key"));
+    const cutoff = Date.now() - ORPHAN_MIN_AGE_MS;
+    const orphans = (await listFolderAssets()).filter(
+      (a) => !referenced.has(a.publicId) && a.createdAt.getTime() < cutoff
+    );
+    for (const type of ["image", "video", "raw"] as const) {
+      const ids = orphans.filter((o) => o.resourceType === type).map((o) => o.publicId);
+      if (ids.length) await deleteAssets(ids, type);
+    }
+    return { removed: orphans.length };
+  } catch (err) {
+    console.error("Orphan sweep failed:", err);
+    return { removed: 0, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -43,7 +69,7 @@ export async function GET(req: NextRequest) {
   await dropLegacyTtlIndex();
 
   const now = new Date();
-  const maxAge = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const maxAge = new Date(now.getTime() - MAX_CLIP_AGE_MS);
 
   const expiredClips = await Clip.find({
     $or: [
@@ -51,10 +77,6 @@ export async function GET(req: NextRequest) {
       { createdAt: { $lt: maxAge } },
     ],
   }).lean();
-
-  if (expiredClips.length === 0) {
-    return NextResponse.json({ message: "No expired clips found", deleted: 0 });
-  }
 
   let deletedDocs = 0;
   let deletedFiles = 0;
@@ -84,10 +106,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Runs after expired clips are gone so their keys no longer count as referenced.
+  const orphans = await sweepOrphans();
+  if (orphans.error) errors.push(`Orphan sweep: ${orphans.error}`);
+
   return NextResponse.json({
     message: "Cleanup completed",
     deleted: deletedDocs,
     filesRemoved: deletedFiles,
+    orphansRemoved: orphans.removed,
     ...(errors.length > 0 && { errors }),
   });
 }

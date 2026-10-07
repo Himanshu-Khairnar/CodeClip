@@ -1,19 +1,11 @@
 import { NextResponse } from "next/server";
-import { v2 as cloudinary } from "cloudinary";
-import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { cloudinary, UPLOAD_FOLDER } from "@/lib/cloudinary";
+import { checkRateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 import { MAX_FILE_SIZE } from "@/lib/limits";
 import { buildPublicId, getResourceType } from "@/lib/file-types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const UPLOAD_FOLDER = "online-clipboard";
 
 /**
  * Returns signed params for ONE direct browser → Cloudinary upload.
@@ -23,17 +15,16 @@ const UPLOAD_FOLDER = "online-clipboard";
  * The server picks the public_id + resource_type (decided by file
  * extension) and signs exactly { folder, public_id, timestamp } —
  * the client must echo those same values back to Cloudinary.
+ *
+ * Uploads that are never attached to a clip are removed by the cleanup
+ * cron's orphan sweep, so a leaked signature can't park files forever.
  */
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const rate = checkRateLimit(ip, 30, 60_000); // 30 signatures / minute / IP
-    if (!rate.ok) {
-      return NextResponse.json(
-        { message: `Too many requests. Try again in ${rate.retryAfter}s.` },
-        { status: 429 }
-      );
-    }
+    // One clip holds at most 20 files; a few clips a minute is plenty.
+    const rate = await checkRateLimit(`sign:${ip}`, 60, 10 * 60_000);
+    if (!rate.ok) return tooManyRequests(rate.retryAfter);
 
     let filename = "";
     let size: unknown = undefined;

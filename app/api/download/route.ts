@@ -1,28 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isOwnCloudinaryUrl } from "@/lib/cloudinary";
+import { checkRateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Only allow proxying from our own Cloudinary delivery domain to prevent SSRF.
-const ALLOWED_HOST_SUFFIXES = [
-  "res.cloudinary.com",
-  "cloudinary.com",
-];
-
-function isAllowedUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:") return false;
-    const host = parsed.hostname.toLowerCase();
-    return ALLOWED_HOST_SUFFIXES.some(
-      (suffix) => host === suffix || host.endsWith(`.${suffix}`)
-    );
-  } catch {
-    return false;
-  }
-}
-
 export async function GET(req: NextRequest) {
+  const rate = await checkRateLimit(`dl:${getClientIp(req)}`, 120, 60_000);
+  if (!rate.ok) return tooManyRequests(rate.retryAfter);
+
   const searchParams = req.nextUrl.searchParams;
   const fileUrl = searchParams.get("url");
   const filename = searchParams.get("filename") || "file";
@@ -31,9 +17,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "File URL is required" }, { status: 400 });
   }
 
-  if (!isAllowedUrl(fileUrl)) {
+  // Only our own cloud — otherwise this is an open bandwidth proxy.
+  if (!isOwnCloudinaryUrl(fileUrl)) {
     return NextResponse.json(
-      { error: "Only files hosted on Cloudinary can be proxied" },
+      { error: "Only this app's files can be downloaded" },
       { status: 403 }
     );
   }
@@ -57,7 +44,7 @@ export async function GET(req: NextRequest) {
       "Content-Disposition",
       `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`
     );
-    headers.set("Cache-Control", "public, max-age=3600");
+    headers.set("Cache-Control", "private, max-age=3600");
     if (contentLength) {
       headers.set("Content-Length", contentLength);
     }

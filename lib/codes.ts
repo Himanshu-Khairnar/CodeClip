@@ -4,3 +4,7 @@ import { randomInt } from "crypto";
 export function generateCode(): string {
   return String(randomInt(1000, 10000));
 }
+
+export function isValidCodeFormat(code: string): boolean {
+  return /^[0-9]{4}$/.test(code);
+}

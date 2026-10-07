@@ -1,71 +1,152 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
-import { decryptText, hashCode } from "@/lib/encryption";
-import { isClipExpired } from "@/lib/clip-auth";
+import { decryptText, encryptText, hashCode } from "@/lib/encryption";
+import { authorizeRead, isClipExpired, requireOwner } from "@/lib/clip-auth";
 import { deleteFromCloudinary } from "@/lib/cloudinary";
-import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { isValidCodeFormat } from "@/lib/codes";
+import { checkRateLimit, getClientIp, peekRateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { BURN_GRACE_MS, MAX_TEXT_LENGTH } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
+
+// Codes are only 4 digits, so wrong guesses are capped hard per IP.
+const MISS_LIMIT = 15;
+const MISS_WINDOW_MS = 15 * 60_000;
+
+const notFound = () => NextResponse.json({ message: "Clip not found" }, { status: 404 });
 
 export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
     const ip = getClientIp(req);
-    const rate = checkRateLimit(ip, 60, 60_000); // 60 reads / minute / IP
-    if (!rate.ok) {
-      return NextResponse.json(
-        { message: `Too many requests. Try again in ${rate.retryAfter}s.` },
-        { status: 429 }
-      );
-    }
+    const rate = await checkRateLimit(`read:${ip}`, 60, 60_000); // 60 reads / minute / IP
+    if (!rate.ok) return tooManyRequests(rate.retryAfter);
+
+    const missKey = `miss:${ip}`;
+    const misses = await peekRateLimit(missKey, MISS_LIMIT, MISS_WINDOW_MS);
+    if (!misses.ok) return tooManyRequests(misses.retryAfter);
+
+    const { code } = await params;
+    if (!isValidCodeFormat(code)) return notFound();
 
     await dbConnect();
-    const { code } = await params;
-    const codeHash = hashCode(code);
-
-    const clip = await Clip.findOne({ code: codeHash });
-
+    const clip = await Clip.findOne({ code: hashCode(code) });
     if (!clip) {
-      return NextResponse.json({ message: "Clip not found" }, { status: 404 });
+      await checkRateLimit(missKey, MISS_LIMIT, MISS_WINDOW_MS);
+      return notFound();
     }
 
-    if (isClipExpired(clip.expiresAt)) {
-      return NextResponse.json({ message: "Clip has expired" }, { status: 410 });
+    const auth = await authorizeRead(req, clip);
+    if (auth instanceof Response) return auth;
+
+    let { views, lastViewedAt, burnedAt, expiresAt } = clip;
+    if (!auth.owner) {
+      const now = new Date();
+      if (clip.burnAfterRead) {
+        // Atomic: only the first viewer wins. Files stay reachable for a short
+        // grace period so that viewer can still download them.
+        const graceEnd = new Date(Math.min(now.getTime() + BURN_GRACE_MS, new Date(clip.expiresAt).getTime()));
+        const burned = await Clip.findOneAndUpdate(
+          { _id: clip._id, burnedAt: { $exists: false } },
+          { $set: { burnedAt: now, expiresAt: graceEnd, lastViewedAt: now }, $inc: { views: 1 } },
+          { new: true }
+        );
+        if (!burned) {
+          return NextResponse.json(
+            { message: "This clip was set to self-destruct and has already been opened." },
+            { status: 410 }
+          );
+        }
+        ({ views, lastViewedAt, burnedAt, expiresAt } = burned);
+      } else {
+        await Clip.updateOne({ _id: clip._id }, { $inc: { views: 1 }, $set: { lastViewedAt: now } });
+        views = (views ?? 0) + 1;
+        lastViewedAt = now;
+      }
     }
 
-    // Decrypt text
-    const text = decryptText(clip.text || "");
-
-    const responseData = {
-      code,
-      text,
-      files: clip.files,
-      createdAt: clip.createdAt,
-      expiresAt: clip.expiresAt,
-    };
-
-    return NextResponse.json(responseData);
+    return NextResponse.json(
+      {
+        code,
+        text: decryptText(clip.text || ""),
+        files: clip.files.map((f: { filename: string; path: string; size: number; key?: string; resourceType?: string }) => ({
+          filename: f.filename,
+          path: f.path,
+          size: f.size,
+          key: f.key,
+          resourceType: f.resourceType,
+        })),
+        createdAt: clip.createdAt,
+        expiresAt,
+        isOwner: auth.owner,
+        burnAfterRead: !!clip.burnAfterRead,
+        burnedAt: burnedAt ?? null,
+        hasPassword: !!clip.passwordHash,
+        views: views ?? 0,
+        lastViewedAt: lastViewedAt ?? null,
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Access Error:", error);
     return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ code: string }> }) {
+/** Edit the clip's text — creator only. */
+export async function PATCH(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
-    await dbConnect();
+    const rate = await checkRateLimit(`write:${getClientIp(req)}`, 30, 60_000);
+    if (!rate.ok) return tooManyRequests(rate.retryAfter);
+
     const { code } = await params;
+    if (!isValidCodeFormat(code)) return notFound();
 
-    const clip = await Clip.findOneAndDelete({ code: hashCode(code) });
-
-    if (!clip) {
-      return NextResponse.json({ message: "Clip not found" }, { status: 404 });
+    await dbConnect();
+    const clip = await Clip.findOne({ code: hashCode(code) });
+    if (!clip) return notFound();
+    const denied = requireOwner(req, clip);
+    if (denied) return denied;
+    if (isClipExpired(clip.expiresAt)) {
+      return NextResponse.json({ message: "Clip has expired" }, { status: 410 });
     }
 
+    const body = await req.json().catch(() => null);
+    const text = typeof body?.text === "string" ? body.text : null;
+    if (text === null) return NextResponse.json({ message: "Text is required." }, { status: 400 });
+    if (text.length > MAX_TEXT_LENGTH) {
+      return NextResponse.json({ message: `Text content is too large (max ${MAX_TEXT_LENGTH / 1000}KB)` }, { status: 400 });
+    }
+    if (!text.trim() && clip.files.length === 0) {
+      return NextResponse.json({ message: "A clip needs some text or files." }, { status: 400 });
+    }
+
+    await Clip.updateOne({ _id: clip._id }, { $set: { text: encryptText(text) } });
+    return NextResponse.json({ text });
+  } catch (error) {
+    console.error("Edit Error:", error);
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
+  }
+}
+
+/** Delete the clip and its files — creator only. */
+export async function DELETE(req: Request, { params }: { params: Promise<{ code: string }> }) {
+  try {
+    const rate = await checkRateLimit(`write:${getClientIp(req)}`, 30, 60_000);
+    if (!rate.ok) return tooManyRequests(rate.retryAfter);
+
+    const { code } = await params;
+    if (!isValidCodeFormat(code)) return notFound();
+
+    await dbConnect();
+    const clip = await Clip.findOne({ code: hashCode(code) });
+    if (!clip) return notFound();
+    const denied = requireOwner(req, clip);
+    if (denied) return denied;
+
+    await Clip.deleteOne({ _id: clip._id });
     for (const f of clip.files) {
-      if (f.key) {
-        await deleteFromCloudinary(f.key, f.resourceType || "raw");
-      }
+      if (f.key) await deleteFromCloudinary(f.key, f.resourceType || "raw");
     }
 
     return NextResponse.json({ message: "Clip deleted successfully" });

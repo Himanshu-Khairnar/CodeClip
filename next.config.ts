@@ -8,9 +8,6 @@ const nextConfig: NextConfig = {
       "react-markdown",
       "sonner",
     ],
-    serverActions: {
-      bodySizeLimit: '25mb',
-    },
   },
   serverExternalPackages: ["mongoose", "cloudinary", "yazl"],
 };

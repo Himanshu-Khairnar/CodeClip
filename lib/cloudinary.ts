@@ -6,6 +6,30 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+export { cloudinary };
+
+export const UPLOAD_FOLDER = "online-clipboard";
+
+/** Delivery URL prefix for *our* cloud — anything else is rejected. */
+export function ownDeliveryPrefix(): string {
+  return `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME || ""}/`;
+}
+
+export function isOwnCloudinaryUrl(url: string): boolean {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  if (!cloudName) return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.hostname === "res.cloudinary.com" &&
+      parsed.pathname.startsWith(`/${cloudName}/`)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function uploadToCloudinary(
   buffer: Buffer,
   options: object
@@ -42,5 +66,43 @@ export async function deleteFromCloudinary(
         // ignore secondary error
       }
     }
+  }
+}
+
+export interface FolderAsset {
+  publicId: string;
+  resourceType: "image" | "video" | "raw";
+  createdAt: Date;
+}
+
+/** Every asset in the upload folder, across all resource types. */
+export async function listFolderAssets(): Promise<FolderAsset[]> {
+  const out: FolderAsset[] = [];
+  for (const resourceType of ["image", "video", "raw"] as const) {
+    let cursor: string | undefined;
+    do {
+      const page = await cloudinary.api.resources({
+        type: "upload",
+        prefix: `${UPLOAD_FOLDER}/`,
+        resource_type: resourceType,
+        max_results: 500,
+        next_cursor: cursor,
+      });
+      for (const r of page.resources as { public_id: string; created_at: string }[]) {
+        out.push({ publicId: r.public_id, resourceType, createdAt: new Date(r.created_at) });
+      }
+      cursor = page.next_cursor;
+    } while (cursor);
+  }
+  return out;
+}
+
+/** Bulk delete (Cloudinary caps a single call at 100 ids). */
+export async function deleteAssets(publicIds: string[], resourceType: "image" | "video" | "raw") {
+  for (let i = 0; i < publicIds.length; i += 100) {
+    await cloudinary.api.delete_resources(publicIds.slice(i, i + 100), {
+      resource_type: resourceType,
+      invalidate: true,
+    });
   }
 }

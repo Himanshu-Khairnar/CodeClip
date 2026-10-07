@@ -4,8 +4,9 @@ import { ZipFile } from "yazl";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
 import { hashCode } from "@/lib/encryption";
-import { isClipExpired } from "@/lib/clip-auth";
-import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { authorizeRead } from "@/lib/clip-auth";
+import { isValidCodeFormat } from "@/lib/codes";
+import { checkRateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,16 +14,14 @@ export const maxDuration = 60;
 export async function GET(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   try {
     const ip = getClientIp(req);
-    const rate = checkRateLimit(ip, 30, 60_000);
-    if (!rate.ok) {
-      return NextResponse.json(
-        { message: `Too many requests. Try again in ${rate.retryAfter}s.` },
-        { status: 429 }
-      );
-    }
+    const rate = await checkRateLimit(`zip:${ip}`, 10, 60_000);
+    if (!rate.ok) return tooManyRequests(rate.retryAfter);
 
-    await dbConnect();
     const { code } = await params;
+    if (!isValidCodeFormat(code)) {
+      return NextResponse.json({ message: "Clip not found" }, { status: 404 });
+    }
+    await dbConnect();
 
     const clip = await Clip.findOne({ code: hashCode(code) });
 
@@ -30,9 +29,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       return NextResponse.json({ message: "Clip not found" }, { status: 404 });
     }
 
-    if (isClipExpired(clip.expiresAt)) {
-      return NextResponse.json({ message: "Clip has expired" }, { status: 410 });
-    }
+    // Burned clips stay zippable during the short grace window after the first view.
+    const auth = await authorizeRead(req, clip, { allowBurnGrace: true });
+    if (auth instanceof Response) return auth;
 
     if (!clip.files || clip.files.length === 0) {
       return NextResponse.json({ message: "This clip has no files" }, { status: 400 });

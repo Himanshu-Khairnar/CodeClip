@@ -15,6 +15,15 @@ export interface IClip extends mongoose.Document {
   totalSize: number;
   createdAt: Date;
   expiresAt: Date;
+  /** sha256 of the creator's owner token — required to edit/delete. */
+  ownerTokenHash?: string;
+  /** scrypt `salt:hash` when the clip is password protected. */
+  passwordHash?: string;
+  burnAfterRead?: boolean;
+  /** Set on the first non-owner view of a burn-after-read clip. */
+  burnedAt?: Date;
+  views: number;
+  lastViewedAt?: Date;
 }
 
 const FileSchema = new mongoose.Schema({
@@ -32,7 +41,16 @@ const ClipSchema = new mongoose.Schema({
   totalSize: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
+  ownerTokenHash: { type: String },
+  passwordHash: { type: String },
+  burnAfterRead: { type: Boolean, default: false },
+  burnedAt: { type: Date },
+  views: { type: Number, default: 0 },
+  lastViewedAt: { type: Date },
 });
+
+// Lets the create route cheaply reject a file key already used by another clip.
+ClipSchema.index({ "files.key": 1 });
 
 // NOTE: no TTL index on expiresAt. The /api/cleanup cron deletes both the
 // MongoDB document AND the Cloudinary files, so a TTL index would orphan

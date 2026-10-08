@@ -9,7 +9,6 @@ export const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 export const MAX_FILES = 20;
 export const MAX_TEXT_LENGTH = 500_000;
-export const MAX_PASSWORD_LENGTH = 128;
 
 /** Allowed clip lifetimes, in minutes. */
 export const EXPIRY_OPTIONS = [
@@ -22,6 +21,3 @@ export const DEFAULT_EXPIRY_MINUTES = 1440;
 
 /** Hard ceiling enforced by the cleanup cron regardless of expiresAt. */
 export const MAX_CLIP_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** How long a burn-after-read clip's files stay downloadable after the first view. */
-export const BURN_GRACE_MS = 10 * 60 * 1000;

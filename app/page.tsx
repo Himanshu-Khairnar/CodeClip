@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import {
   UploadCloud, CheckCircle2, ExternalLink, X, Info, Clock, History, Trash2,
-  KeyRound, Loader2, Plus, ArrowRight, Flame, Lock, Eye, EyeOff, Share2,
+  KeyRound, Loader2, Plus, ArrowRight, Share2, Paperclip, FileText,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { Panel, Field } from "@/components/panel";
@@ -17,13 +17,13 @@ import { CopyRow } from "@/components/code-badge";
 import { CopyButton } from "@/components/copy-button";
 import { Segmented } from "@/components/segmented";
 import { ConfirmButton } from "@/components/confirm-button";
-import { SwitchRow } from "@/components/switch";
 import { loadHistory, removeHistoryItem, saveHistoryItem, type HistoryItem } from "@/lib/history";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
+import { summarizeFiles, thumbnailUrl } from "@/lib/file-types";
 import { compressImage, isCompressibleImage, COMPRESS_SKIP_UNDER } from "@/lib/compress";
 import {
-  MAX_TOTAL_SIZE, MAX_FILE_SIZE, MAX_TEXT_LENGTH, MAX_PASSWORD_LENGTH,
+  MAX_TOTAL_SIZE, MAX_FILE_SIZE, MAX_TEXT_LENGTH,
   EXPIRY_OPTIONS, DEFAULT_EXPIRY_MINUTES,
 } from "@/lib/limits";
 import { useRouter } from "next/navigation";
@@ -44,8 +44,6 @@ interface CreateResult {
 interface CreatedClip {
   code: string;
   expiryMinutes: number;
-  burnAfterRead: boolean;
-  hasPassword: boolean;
 }
 
 type TabValue = "create" | "access" | "history";
@@ -62,9 +60,6 @@ const TAB_TRIGGER_CLASS =
 export default function Home() {
   const [text, setText] = useState("");
   const [expiry, setExpiry] = useState(String(DEFAULT_EXPIRY_MINUTES));
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [burnAfterRead, setBurnAfterRead] = useState(false);
   const [tab, setTab] = useState<TabValue>("create");
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -296,15 +291,21 @@ export default function Home() {
     });
   };
 
-  const finishCreate = async (result: CreateResult) => {
+  const summarize = (list: File[]) => ({
+    fileSummary: summarizeFiles(list.map((f) => f.name)),
+    totalSize: list.reduce((sum, f) => sum + f.size, 0),
+  });
+
+  const finishCreate = async (
+    result: CreateResult,
+    summary: { fileSummary: string; totalSize: number; thumbnail?: string }
+  ) => {
     const generatedCode = result.code;
     setProgress(100);
     setCode(generatedCode);
     setCreated({
       code: generatedCode,
       expiryMinutes: Number(expiry),
-      burnAfterRead,
-      hasPassword: !!password,
     });
 
     const clipUrl = `${window.location.origin}/clip/${generatedCode}`;
@@ -318,11 +319,10 @@ export default function Home() {
       url: clipUrl,
       textSnippet: text.trim().slice(0, 80),
       fileCount: files.length,
+      ...summary,
       createdAt: Date.now(),
       expiresAt: result.expiresAt ? new Date(result.expiresAt).getTime() : Date.now() + Number(expiry) * 60_000,
       ownerToken: result.ownerToken,
-      burnAfterRead,
-      hasPassword: !!password,
     });
     setHistory(loadHistory());
 
@@ -411,10 +411,8 @@ export default function Home() {
           const formData = new FormData();
           formData.append("text", text);
           formData.append("expiryMinutes", expiry);
-          formData.append("password", password);
-          formData.append("burnAfterRead", String(burnAfterRead));
           for (const file of prepared) formData.append("files", file);
-          await finishCreate(await createViaServer(formData));
+          await finishCreate(await createViaServer(formData), summarize(prepared));
           return;
         }
       }
@@ -428,8 +426,6 @@ export default function Home() {
         body: JSON.stringify({
           text,
           expiryMinutes: Number(expiry),
-          password,
-          burnAfterRead,
           files: uploaded,
         }),
       });
@@ -442,7 +438,11 @@ export default function Home() {
       if (!res.ok || !data?.code) {
         throw new Error(data?.message || "Something went wrong during upload.");
       }
-      await finishCreate(data);
+      const firstImage = uploaded.find((u) => u.resourceType === "image");
+      await finishCreate(data, {
+        ...summarize(prepared),
+        thumbnail: firstImage ? thumbnailUrl(firstImage.path) : undefined,
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong during upload.");
     } finally {
@@ -457,8 +457,6 @@ export default function Home() {
     setCreated(null);
     setFiles([]);
     setText("");
-    setPassword("");
-    setBurnAfterRead(false);
   };
 
   const handleCloseClip = async () => {
@@ -568,8 +566,6 @@ export default function Home() {
                         <Info className="w-4 h-4 text-primary shrink-0" />
                         <p className="text-xs text-muted-foreground leading-snug">
                           Expires in {expiryLabel(created?.expiryMinutes ?? Number(expiry))}
-                          {created?.burnAfterRead && " · self-destructs after the first view"}
-                          {created?.hasPassword && " · password protected"}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -727,43 +723,6 @@ export default function Home() {
                     />
                   </Field>
 
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <SwitchRow
-                      checked={burnAfterRead}
-                      onChange={setBurnAfterRead}
-                      icon={<Flame className="w-4 h-4" />}
-                      label="Self-destruct"
-                      description="Gone after the first view"
-                    />
-                    <div
-                      className={cn(
-                        "flex items-center gap-2 rounded-md border px-3 transition-[border-color,background-color] duration-150 focus-within:ring-[3px] focus-within:ring-ring/50",
-                        password ? "border-primary/40 bg-primary/5" : "border-border"
-                      )}
-                    >
-                      <Lock className={cn("w-4 h-4 shrink-0 transition-colors", password ? "text-primary" : "text-muted-foreground")} />
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value.slice(0, MAX_PASSWORD_LENGTH))}
-                        placeholder="Password (optional)"
-                        autoComplete="new-password"
-                        aria-label="Optional password"
-                        className="h-11 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
-                      />
-                      {password && (
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((v) => !v)}
-                          className="shrink-0 rounded p-0.5 text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-90 animate-fade"
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
                   <Button
                     key={shakeKey}
                     onClick={handleUpload}
@@ -855,7 +814,18 @@ export default function Home() {
                 ) : (
                   history.map((item, idx) => (
                     <div key={item.code} className="flex items-center gap-2 sm:gap-3 bg-muted/40 border border-border rounded-md px-3 py-2.5 transition-[background-color,border-color] duration-150 hover:bg-muted/70 hover:border-primary/30 animate-rise" style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}>
-                      <button type="button" className="flex-1 min-w-0 cursor-pointer text-left rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50" onClick={() => router.push(`/clip/${item.code}`)}>
+                      <button type="button" className="flex flex-1 min-w-0 items-center gap-3 cursor-pointer text-left rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50" onClick={() => router.push(`/clip/${item.code}`)}>
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+                          {item.thumbnail ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" />
+                          ) : item.fileCount > 0 ? (
+                            <Paperclip className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-mono font-bold text-sm tracking-widest text-primary shrink-0">{item.code}</span>
                           <span className="text-[11px] text-muted-foreground break-all">
@@ -864,12 +834,12 @@ export default function Home() {
                         </div>
                         {item.textSnippet && <p className="text-xs text-muted-foreground truncate mt-0.5 pr-1">{item.textSnippet}</p>}
                         <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground mt-0.5">
-                          {item.fileCount > 0 && <span>{item.fileCount} file(s)</span>}
+                          {item.fileCount > 0 && <span>{item.fileSummary || `${item.fileCount} file(s)`}</span>}
+                          {!!item.totalSize && <span>{formatBytes(item.totalSize)}</span>}
                           {item.expiresAt && (
                             <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(item.expiresAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
                           )}
-                          {item.burnAfterRead && <span className="inline-flex items-center gap-1 text-orange-500"><Flame className="w-3 h-3" /> Self-destruct</span>}
-                          {item.hasPassword && <span className="inline-flex items-center gap-1"><Lock className="w-3 h-3" /> Password</span>}
+                        </div>
                         </div>
                       </button>
                       <div className="flex items-center gap-1 shrink-0">

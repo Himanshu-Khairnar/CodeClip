@@ -1,15 +1,9 @@
-import { hashToken, safeEqualHex, verifyPassword } from "@/lib/encryption";
-import { checkRateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit";
-import { BURN_GRACE_MS } from "@/lib/limits";
+import { hashToken, safeEqualHex } from "@/lib/encryption";
 
 export const OWNER_HEADER = "x-owner-token";
-export const PASSWORD_HEADER = "x-clip-password";
 
 interface AuthClip {
-  _id: unknown;
   ownerTokenHash?: string;
-  passwordHash?: string;
-  burnedAt?: Date | null;
   expiresAt: Date;
 }
 
@@ -34,49 +28,10 @@ export function requireOwner(req: Request, clip: AuthClip): Response | null {
   );
 }
 
-/**
- * Gate read access: expiry, burn-after-read, and password. Owners bypass
- * burn and password checks. Returns a Response to send on failure, or
- * `{ owner }` on success.
- */
-export async function authorizeRead(
-  req: Request,
-  clip: AuthClip,
-  opts: { allowBurnGrace?: boolean } = {}
-): Promise<Response | { owner: boolean }> {
+/** Gate read access on expiry. Returns a Response to send on failure, or `{ owner }` on success. */
+export function authorizeRead(req: Request, clip: AuthClip): Response | { owner: boolean } {
   if (isClipExpired(clip.expiresAt)) {
     return Response.json({ message: "Clip has expired" }, { status: 410 });
   }
-  const owner = isOwner(req, clip);
-  if (owner) return { owner };
-
-  if (clip.burnedAt) {
-    const withinGrace = Date.now() - new Date(clip.burnedAt).getTime() < BURN_GRACE_MS;
-    if (!opts.allowBurnGrace || !withinGrace) {
-      return Response.json(
-        { message: "This clip was set to self-destruct and has already been opened." },
-        { status: 410 }
-      );
-    }
-  }
-
-  if (clip.passwordHash) {
-    const raw = req.headers.get(PASSWORD_HEADER);
-    if (!raw) {
-      return Response.json({ message: "This clip is password protected.", passwordRequired: true }, { status: 401 });
-    }
-    const rate = await checkRateLimit(`pw:${getClientIp(req)}:${String(clip._id)}`, 10, 10 * 60_000);
-    if (!rate.ok) return tooManyRequests(rate.retryAfter);
-    let password = raw;
-    try {
-      password = decodeURIComponent(raw);
-    } catch {
-      // use the raw header value
-    }
-    if (!verifyPassword(password, clip.passwordHash)) {
-      return Response.json({ message: "Incorrect password.", passwordRequired: true }, { status: 401 });
-    }
-  }
-
-  return { owner };
+  return { owner: isOwner(req, clip) };
 }

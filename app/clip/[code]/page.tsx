@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { toast } from "sonner";
 import {
   Download, AlertTriangle, ArrowLeft, FileArchive, FileCode,
-  Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2, Lock, Flame, Pencil, BarChart3, Maximize2,
+  Eye, EyeOff, Loader2, CalendarDays, Clock, Trash2, Pencil, BarChart3, Maximize2,
 } from "lucide-react";
 import { FileIcon } from "@/components/file-icon";
 import { CodeBadge } from "@/components/code-badge";
@@ -17,7 +17,6 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { CodeView, languageForFilename } from "@/components/code-view";
 import { Lightbox } from "@/components/lightbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { ownerHeaders, removeHistoryItem } from "@/lib/history";
 import { MAX_TEXT_LENGTH } from "@/lib/limits";
 import { formatBytes } from "@/lib/format";
@@ -49,12 +48,15 @@ interface ClipData {
     createdAt?: string;
     expiresAt?: string;
     isOwner?: boolean;
-    burnAfterRead?: boolean;
-    burnedAt?: string | null;
-    hasPassword?: boolean;
     views?: number;
     lastViewedAt?: string | null;
 }
+
+/** How often an open clip checks for changes made on another device. */
+const LIVE_POLL_MS = 5000;
+
+const sameFiles = (a: ClipFile[], b: ClipFile[]) =>
+    a.length === b.length && a.every((f, i) => f.key === b[i].key && f.path === b[i].path);
 
 type TextView = "preview" | "code" | "raw";
 const TEXT_VIEWS = [
@@ -80,14 +82,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number } | null>(null);
     const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
-    // Password-protected clips
-    const [needsPassword, setNeedsPassword] = useState(false);
-    const [password, setPassword] = useState("");
-    const [passwordError, setPasswordError] = useState("");
-    const [unlocking, setUnlocking] = useState(false);
-    const [shakeKey, setShakeKey] = useState(0);
-    const passwordRef = useRef("");
-
     // Owner editing
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState("");
@@ -96,29 +90,24 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
     const router = useRouter();
 
-    /** Owner token + unlocked password, sent with every clip request. */
-    const authHeaders = useCallback((): Record<string, string> => {
-        const headers = ownerHeaders(code);
-        if (passwordRef.current) headers["x-clip-password"] = encodeURIComponent(passwordRef.current);
-        return headers;
-    }, [code]);
+    /** Owner token, sent with every clip request. */
+    const authHeaders = useCallback(() => ownerHeaders(code), [code]);
+
+    // Live updates: `dataRef` lets the poller diff without re-subscribing, and
+    // `mutationRef` bumps on local edits so an in-flight poll can't undo them.
+    const dataRef = useRef<ClipData | null>(null);
+    const mutationRef = useRef(0);
+    const pollingRef = useRef(false);
+    useEffect(() => {
+        dataRef.current = data;
+    }, [data]);
 
     const fetchClip = useCallback(async () => {
         try {
             const res = await fetch(`/api/clip/${code}`, { headers: authHeaders(), cache: "no-store" });
             const resData = await res.json().catch(() => ({}));
 
-            if (res.status === 401 && resData.passwordRequired) {
-                setNeedsPassword(true);
-                if (passwordRef.current) {
-                    setPasswordError(resData.message || "Incorrect password.");
-                    setShakeKey((k) => k + 1);
-                }
-                return;
-            }
-
             if (!res.ok) {
-                setNeedsPassword(false);
                 setError(resData.message || "Clip not found or expired.");
                 // Clip is gone on the server (deleted/expired) — drop it
                 // from this device's local history so it doesn't linger.
@@ -126,8 +115,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                 return;
             }
 
-            setNeedsPassword(false);
-            setPasswordError("");
             setData(resData);
         } catch (err) {
             console.error(err);
@@ -137,15 +124,37 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         }
     }, [code, authHeaders]);
 
-    const handleUnlock = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!password) return;
-        passwordRef.current = password;
-        setUnlocking(true);
-        setPasswordError("");
-        await fetchClip();
-        setUnlocking(false);
-    };
+    const refreshClip = useCallback(async () => {
+        if (pollingRef.current) return;
+        pollingRef.current = true;
+        const mutation = mutationRef.current;
+        try {
+            const res = await fetch(`/api/clip/${code}?live=1`, { headers: authHeaders(), cache: "no-store" });
+            if (mutation !== mutationRef.current) return;
+            if (res.status === 404 || res.status === 410) {
+                const body = await res.json().catch(() => ({}));
+                removeHistoryItem(code);
+                setError(res.status === 404 ? "This clip was deleted." : body.message || "Clip has expired");
+                return;
+            }
+            // Rate limits and server hiccups are transient; try again next tick.
+            if (!res.ok) return;
+            const next: ClipData = await res.json();
+            if (mutation !== mutationRef.current) return;
+
+            const prev = dataRef.current;
+            if (prev) {
+                const filesChanged = !sameFiles(prev.files, next.files);
+                if (filesChanged) setPreviewFileIndex(null);
+                if (filesChanged || prev.text !== next.text) toast.info("This clip was just updated");
+            }
+            setData(next);
+        } catch {
+            // offline or network blip; try again next tick
+        } finally {
+            pollingRef.current = false;
+        }
+    }, [code, authHeaders]);
 
     const startEditing = () => {
         setDraft(data?.text || "");
@@ -153,6 +162,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
     };
 
     const saveEdit = async () => {
+        mutationRef.current++;
         setSaving(true);
         try {
             const res = await fetch(`/api/clip/${code}`, {
@@ -168,11 +178,13 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         } catch (e) {
             toast.error(e instanceof Error ? e.message : "Couldn't save changes");
         } finally {
+            mutationRef.current++;
             setSaving(false);
         }
     };
 
     const deleteClip = async () => {
+        mutationRef.current++;
         try {
             const res = await fetch(`/api/clip/${code}`, { method: "DELETE", headers: authHeaders() });
             const body = await res.json().catch(() => null);
@@ -190,6 +202,22 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
             fetchClip();
         }
     }, [code, fetchClip]);
+
+    // Poll for changes while the tab is visible, and catch up as soon as it
+    // becomes visible again.
+    const hasData = !!data;
+    useEffect(() => {
+        if (!hasData || error) return;
+        const tick = () => {
+            if (document.visibilityState === "visible") refreshClip();
+        };
+        const interval = setInterval(tick, LIVE_POLL_MS);
+        document.addEventListener("visibilitychange", tick);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener("visibilitychange", tick);
+        };
+    }, [hasData, error, refreshClip]);
 
     // Live countdown to expiry
     useEffect(() => {
@@ -279,6 +307,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
             toast.error("Cannot delete this file");
             return;
         }
+        mutationRef.current++;
         setDeletingFile(filename);
         try {
             const res = await fetch(`/api/clip/${code}/file?key=${encodeURIComponent(key)}`, { method: "DELETE", headers: authHeaders() });
@@ -294,6 +323,7 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
         } catch (e) {
             toast.error(e instanceof Error ? e.message : "Delete failed");
         } finally {
+            mutationRef.current++;
             setDeletingFile(null);
         }
     };
@@ -343,49 +373,6 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                         <Skeleton className="h-32 w-full" />
                         <Skeleton className="h-10 w-full" />
                     </div>
-                </div>
-            </div>
-        );
-    }
-
-    if (needsPassword && !data) {
-        return (
-            <div className="flex-1 w-full px-3 py-4 sm:px-6 sm:py-6">
-                <div className="mx-auto w-full max-w-3xl flex flex-col gap-3">
-                    <Card className="w-full max-w-sm mx-auto shadow-md rounded-xl animate-rise">
-                        <CardHeader className="text-center">
-                            <div className="w-12 h-12 mx-auto mb-1 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center animate-pop">
-                                <Lock className="w-5 h-5 text-primary" />
-                            </div>
-                            <CardTitle className="text-lg">Password required</CardTitle>
-                            <CardDescription>Clip <span className="font-mono font-semibold text-foreground">{code}</span> is protected. Enter its password to open it.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form onSubmit={handleUnlock} className="space-y-3">
-                                <div key={shakeKey} className={shakeKey > 0 ? "animate-shake" : undefined}>
-                                    <Input
-                                        type="password"
-                                        autoFocus
-                                        value={password}
-                                        onChange={(e) => { setPassword(e.target.value); setPasswordError(""); }}
-                                        placeholder="Password"
-                                        aria-invalid={!!passwordError}
-                                        className="h-10"
-                                    />
-                                </div>
-                                {passwordError && <p className="text-xs text-destructive animate-fade">{passwordError}</p>}
-                                <Button type="submit" className="w-full h-10" disabled={!password || unlocking}>
-                                    {unlocking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                                    {unlocking ? "Unlocking…" : "Unlock"}
-                                </Button>
-                            </form>
-                        </CardContent>
-                        <CardFooter className="justify-center">
-                            <Button variant="ghost" size="sm" asChild>
-                                <Link href="/"><ArrowLeft className="w-4 h-4" /> Back to Home</Link>
-                            </Button>
-                        </CardFooter>
-                    </Card>
                 </div>
             </div>
         );
@@ -446,23 +433,14 @@ export default function ClipPage({ params }: { params: Promise<{ code: string }>
                                 {data.views ?? 0} view{data.views === 1 ? "" : "s"}
                                 {data.lastViewedAt && <span className="hidden sm:inline">· last {format(new Date(data.lastViewedAt), "MMM d, h:mm a")}</span>}
                             </span>
-                            {data.hasPassword && (
-                                <span className="flex items-center gap-1.5"><Lock className="w-3.5 h-3.5 shrink-0" /> Password</span>
-                            )}
+                            <span className="flex items-center gap-1.5" title="Changes made on other devices show up here automatically">
+                                <span className="relative flex h-2 w-2 shrink-0">
+                                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60 motion-safe:animate-ping" />
+                                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                                </span>
+                                Live
+                            </span>
                         </div>
-
-                        {data.burnAfterRead && (
-                            <div className="flex items-start gap-2.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2.5 text-xs animate-rise">
-                                <Flame className="w-4 h-4 shrink-0 text-orange-500 mt-px" />
-                                <p className="leading-snug">
-                                    {data.isOwner
-                                        ? data.burnedAt
-                                            ? "This clip has been opened and is self-destructing. Others can no longer open it."
-                                            : "Self-destruct is on: the first person to open this clip will be the only one who can see it."
-                                        : "This clip self-destructed when you opened it. It can't be opened again, and its files stay downloadable for about 10 minutes, so save what you need now."}
-                                </p>
-                            </div>
-                        )}
 
                         {data.isOwner && (
                             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-border px-3 py-2 animate-rise">

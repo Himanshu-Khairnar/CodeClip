@@ -6,7 +6,7 @@ import { authorizeRead, isClipExpired, requireOwner } from "@/lib/clip-auth";
 import { deleteFromCloudinary } from "@/lib/cloudinary";
 import { isValidCodeFormat } from "@/lib/codes";
 import { checkRateLimit, getClientIp, peekRateLimit, tooManyRequests } from "@/lib/rate-limit";
-import { BURN_GRACE_MS, MAX_TEXT_LENGTH } from "@/lib/limits";
+import { MAX_TEXT_LENGTH } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,12 @@ const notFound = () => NextResponse.json({ message: "Clip not found" }, { status
 export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
     const ip = getClientIp(req);
-    const rate = await checkRateLimit(`read:${ip}`, 60, 60_000); // 60 reads / minute / IP
+    // `?live=1` is the viewer's background refresh: it has its own budget and
+    // doesn't count as a view.
+    const live = new URL(req.url).searchParams.get("live") === "1";
+    const rate = live
+      ? await checkRateLimit(`live:${ip}`, 120, 60_000)
+      : await checkRateLimit(`read:${ip}`, 60, 60_000); // 60 reads / minute / IP
     if (!rate.ok) return tooManyRequests(rate.retryAfter);
 
     const missKey = `miss:${ip}`;
@@ -36,33 +41,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
       return notFound();
     }
 
-    const auth = await authorizeRead(req, clip);
+    const auth = authorizeRead(req, clip);
     if (auth instanceof Response) return auth;
 
-    let { views, lastViewedAt, burnedAt, expiresAt } = clip;
-    if (!auth.owner) {
+    let { views, lastViewedAt } = clip;
+    if (!auth.owner && !live) {
       const now = new Date();
-      if (clip.burnAfterRead) {
-        // Atomic: only the first viewer wins. Files stay reachable for a short
-        // grace period so that viewer can still download them.
-        const graceEnd = new Date(Math.min(now.getTime() + BURN_GRACE_MS, new Date(clip.expiresAt).getTime()));
-        const burned = await Clip.findOneAndUpdate(
-          { _id: clip._id, burnedAt: { $exists: false } },
-          { $set: { burnedAt: now, expiresAt: graceEnd, lastViewedAt: now }, $inc: { views: 1 } },
-          { new: true }
-        );
-        if (!burned) {
-          return NextResponse.json(
-            { message: "This clip was set to self-destruct and has already been opened." },
-            { status: 410 }
-          );
-        }
-        ({ views, lastViewedAt, burnedAt, expiresAt } = burned);
-      } else {
-        await Clip.updateOne({ _id: clip._id }, { $inc: { views: 1 }, $set: { lastViewedAt: now } });
-        views = (views ?? 0) + 1;
-        lastViewedAt = now;
-      }
+      await Clip.updateOne({ _id: clip._id }, { $inc: { views: 1 }, $set: { lastViewedAt: now } });
+      views = (views ?? 0) + 1;
+      lastViewedAt = now;
     }
 
     return NextResponse.json(
@@ -77,11 +64,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
           resourceType: f.resourceType,
         })),
         createdAt: clip.createdAt,
-        expiresAt,
+        expiresAt: clip.expiresAt,
         isOwner: auth.owner,
-        burnAfterRead: !!clip.burnAfterRead,
-        burnedAt: burnedAt ?? null,
-        hasPassword: !!clip.passwordHash,
         views: views ?? 0,
         lastViewedAt: lastViewedAt ?? null,
       },

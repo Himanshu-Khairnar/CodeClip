@@ -6,8 +6,6 @@ A fast, secure temporary clipboard for sharing text and files. Create a clip, sh
 
 - **Text & File Sharing** — paste text, drop files/folders, or paste screenshots (10MB per file, 50MB total)
 - **Flexible Expiry** — 10 minutes, 1 hour, 1 day or 7 days
-- **Self-destruct** — optional burn-after-read: only the first visitor can open the clip
-- **Password Protection** — optional per-clip password (scrypt-hashed)
 - **Creator Controls** — the creating browser gets a private owner token to edit the text or delete the clip/files; nobody else can
 - **View Counter** — see how many times a clip was opened and when
 - **Syntax Highlighting** — Markdown preview, a highlighted Code view, and highlighted text-file previews
@@ -92,7 +90,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 |---|---|---|
 | `/api/clip/sign` | POST | Sign one direct browser → Cloudinary upload |
 | `/api/clip/create` | POST | Create a clip; returns `code` and a private `ownerToken` |
-| `/api/clip/[code]` | GET | Fetch a clip (`x-clip-password` header for protected clips) |
+| `/api/clip/[code]` | GET | Fetch a clip |
 | `/api/clip/[code]` | PATCH | Edit the clip text — requires `x-owner-token` |
 | `/api/clip/[code]` | DELETE | Delete a clip and its files — requires `x-owner-token` |
 | `/api/clip/[code]/file` | DELETE | Remove one file — requires `x-owner-token` |
@@ -128,8 +126,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ├── lib/
 │   ├── cloudinary.ts       # Cloudinary upload/delete helpers
 │   ├── db.ts               # MongoDB connection
-│   ├── clip-auth.ts        # Owner token / password / burn-after-read checks
-│   ├── encryption.ts       # AES-GCM, code hashing, password hashing
+│   ├── clip-auth.ts        # Owner token and expiry checks
+│   ├── encryption.ts       # AES-GCM, code and token hashing
 │   ├── history.ts          # Local (per-device) clip history + owner tokens
 │   └── rate-limit.ts       # MongoDB-backed rate limiter
 ├── models/

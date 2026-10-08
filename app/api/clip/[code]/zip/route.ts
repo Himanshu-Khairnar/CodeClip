@@ -29,8 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ code
       return NextResponse.json({ message: "Clip not found" }, { status: 404 });
     }
 
-    // Burned clips stay zippable during the short grace window after the first view.
-    const auth = await authorizeRead(req, clip, { allowBurnGrace: true });
+    const auth = authorizeRead(req, clip);
     if (auth instanceof Response) return auth;
 
     if (!clip.files || clip.files.length === 0) {

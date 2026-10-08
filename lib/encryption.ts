@@ -3,7 +3,6 @@ import {
   createDecipheriv,
   createHash,
   randomBytes,
-  scryptSync,
   timingSafeEqual,
 } from "crypto";
 
@@ -98,17 +97,4 @@ export function safeEqualHex(a: string, b: string): boolean {
   const ab = Buffer.from(a, "hex");
   const bb = Buffer.from(b, "hex");
   return ab.length === bb.length && ab.length > 0 && timingSafeEqual(ab, bb);
-}
-
-/** scrypt password hash, stored as `salt:hash` (hex). */
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16);
-  return `${salt.toString("hex")}:${scryptSync(password, salt, 32).toString("hex")}`;
-}
-
-export function verifyPassword(password: string, stored: string): boolean {
-  const [saltHex, hashHex] = stored.split(":");
-  if (!saltHex || !hashHex) return false;
-  const actual = scryptSync(password, Buffer.from(saltHex, "hex"), 32).toString("hex");
-  return safeEqualHex(actual, hashHex);
 }

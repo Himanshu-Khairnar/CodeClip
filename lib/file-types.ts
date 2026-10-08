@@ -85,3 +85,49 @@ export function buildPublicId(
   const ext = getFileExtension(filename);
   return resourceType === "raw" && ext ? `${id}.${ext}` : id;
 }
+
+const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "ogg", "m4a", "flac", "aac"]);
+
+const KIND_LABELS = [
+  ["image", "image", "images"],
+  ["video", "video", "videos"],
+  ["audio", "audio file", "audio files"],
+  ["pdf", "PDF", "PDFs"],
+  ["other", "file", "files"],
+] as const;
+
+type FileKind = (typeof KIND_LABELS)[number][0];
+
+function fileKind(filename: string): FileKind {
+  const ext = getFileExtension(filename);
+  if (IMAGE_EXTENSIONS.has(ext) || ext === "svg") return "image";
+  if (AUDIO_EXTENSIONS.has(ext)) return "audio";
+  if (VIDEO_AUDIO_EXTENSIONS.has(ext)) return "video";
+  if (ext === "pdf") return "pdf";
+  return "other";
+}
+
+/** Human summary of a file list by kind, e.g. "2 images, 1 PDF". */
+export function summarizeFiles(filenames: string[]): string {
+  const counts = new Map<FileKind, number>();
+  for (const name of filenames) {
+    const kind = fileKind(name);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return KIND_LABELS.filter(([kind]) => counts.has(kind))
+    .map(([kind, one, many]) => {
+      const n = counts.get(kind)!;
+      return `${n} ${n === 1 ? one : many}`;
+    })
+    .join(", ");
+}
+
+/**
+ * Small square thumbnail for a Cloudinary image delivery URL, or undefined
+ * for anything that isn't one.
+ */
+export function thumbnailUrl(path: string, size = 96): string | undefined {
+  const marker = "/image/upload/";
+  if (!path.includes(marker)) return undefined;
+  return path.replace(marker, `${marker}c_fill,w_${size},h_${size},q_auto,f_auto/`);
+}

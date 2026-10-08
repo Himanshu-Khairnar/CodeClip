@@ -17,11 +17,6 @@ export interface IClip extends mongoose.Document {
   expiresAt: Date;
   /** sha256 of the creator's owner token — required to edit/delete. */
   ownerTokenHash?: string;
-  /** scrypt `salt:hash` when the clip is password protected. */
-  passwordHash?: string;
-  burnAfterRead?: boolean;
-  /** Set on the first non-owner view of a burn-after-read clip. */
-  burnedAt?: Date;
   views: number;
   lastViewedAt?: Date;
 }
@@ -42,9 +37,6 @@ const ClipSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
   ownerTokenHash: { type: String },
-  passwordHash: { type: String },
-  burnAfterRead: { type: Boolean, default: false },
-  burnedAt: { type: Date },
   views: { type: Number, default: 0 },
   lastViewedAt: { type: Date },
 });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import Clip from "@/models/Clip";
-import { encryptText, generateOwnerToken, hashCode, hashPassword, hashToken } from "@/lib/encryption";
+import { encryptText, generateOwnerToken, hashCode, hashToken } from "@/lib/encryption";
 import { deleteFromCloudinary, ownDeliveryPrefix, uploadToCloudinary, UPLOAD_FOLDER } from "@/lib/cloudinary";
 import { generateCode } from "@/lib/codes";
 import { checkRateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit";
@@ -10,7 +10,6 @@ import {
   EXPIRY_OPTIONS,
   MAX_FILE_SIZE,
   MAX_FILES,
-  MAX_PASSWORD_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_TOTAL_SIZE,
 } from "@/lib/limits";
@@ -32,8 +31,6 @@ interface SavedFile {
 
 interface ClipOptions {
   expiryMinutes: number;
-  password: string;
-  burnAfterRead: boolean;
 }
 
 function bad(message: string, status = 400) {
@@ -41,7 +38,7 @@ function bad(message: string, status = 400) {
 }
 
 /** Accepts `expiryMinutes`, or the legacy `expiry` (hours) field. */
-function parseOptions(get: (name: string) => unknown): ClipOptions | string {
+function parseOptions(get: (name: string) => unknown): ClipOptions {
   const minutes = Number(get("expiryMinutes"));
   const legacyHours = Number(get("expiry"));
   const expiryMinutes = VALID_EXPIRY_MINUTES.has(minutes)
@@ -49,13 +46,7 @@ function parseOptions(get: (name: string) => unknown): ClipOptions | string {
     : VALID_EXPIRY_MINUTES.has(legacyHours * 60)
       ? legacyHours * 60
       : DEFAULT_EXPIRY_MINUTES;
-
-  const rawPassword = get("password");
-  const password = typeof rawPassword === "string" ? rawPassword : "";
-  if (password.length > MAX_PASSWORD_LENGTH) return `Password is too long (max ${MAX_PASSWORD_LENGTH} characters).`;
-
-  const burn = get("burnAfterRead");
-  return { expiryMinutes, password, burnAfterRead: burn === true || burn === "true" };
+  return { expiryMinutes };
 }
 
 /**
@@ -104,7 +95,6 @@ export async function POST(req: Request) {
       if (!body || typeof body !== "object") return bad("Invalid request body.");
       const text = typeof body.text === "string" ? body.text : "";
       const options = parseOptions((name) => body[name]);
-      if (typeof options === "string") return bad(options);
 
       if (text.length > MAX_TEXT_LENGTH) return bad(`Text content is too large (max ${MAX_TEXT_LENGTH / 1000}KB)`);
       const rawFiles: unknown[] = Array.isArray(body.files) ? body.files : [];
@@ -138,7 +128,6 @@ export async function POST(req: Request) {
     const formData = await req.formData();
     const text = (formData.get("text") as string) || "";
     const options = parseOptions((name) => formData.get(name));
-    if (typeof options === "string") return bad(options);
 
     if (text.length > MAX_TEXT_LENGTH) return bad(`Text content is too large (max ${MAX_TEXT_LENGTH / 1000}KB)`);
 
@@ -206,8 +195,6 @@ async function saveClip(text: string, files: SavedFile[], totalSize: number, opt
     totalSize,
     expiresAt,
     ownerTokenHash: hashToken(ownerToken),
-    passwordHash: options.password ? hashPassword(options.password) : undefined,
-    burnAfterRead: options.burnAfterRead,
   });
 
   return { code, ownerToken, expiresAt };

@@ -9,11 +9,14 @@ export interface HistoryItem {
   url: string;
   textSnippet: string;
   fileCount: number;
+  /** e.g. "2 images, 1 PDF" — absent on items saved by older versions. */
+  fileSummary?: string;
+  totalSize?: number;
+  /** Cloudinary thumbnail of the first image, if any. */
+  thumbnail?: string;
   createdAt: number;
   expiresAt?: number;
   ownerToken?: string;
-  burnAfterRead?: boolean;
-  hasPassword?: boolean;
 }
 
 const HISTORY_KEY = "codeclip-history";
